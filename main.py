@@ -11,28 +11,17 @@ def recent_result():
     response = requests.get(url)
     data = response.json()
 
-    latest_round = int(data[0]["date_round"])
-    next_round = latest_round + 1
+    # 가장 최근 회차 찾기
+    last_round = max(int(item["date_round"]) for item in data)
+    predict_round = last_round + 1
 
-    # 예시 예측값 (임시값으로 테스트 가능)
-    predictions = [
-        {"start_point": "LEFT", "line_count": "3", "odd_even": "EVEN"},
-        {"start_point": "RIGHT", "line_count": "3", "odd_even": "ODD"},
-        {"start_point": "LEFT", "line_count": "4", "odd_even": "ODD"},
-    ]
-
-    def format_name(p):
-        start_map = {"LEFT": "좌", "RIGHT": "우"}
-        line_map = {"3": "삼", "4": "사"}
-        oe_map = {"ODD": "홀", "EVEN": "짝"}
-        return f"{start_map[p['start_point']]}{line_map[p['line_count']]}{oe_map[p['odd_even']]}"
-
-    formatted = [format_name(p) for p in predictions]
+    # 예측값 샘플 - 실제로는 머신 결과로 대체 가능
+    predictions = ["좌삼짝", "우삼홀", "좌사홀"]
 
     return jsonify({
-        "next_round": next_round,
-        "predictions": formatted
+        "predict_round": predict_round,
+        "predictions": predictions
     })
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run(debug=False, host="0.0.0.0")
