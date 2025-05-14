@@ -1,7 +1,7 @@
 from flask import Flask, jsonify
 from flask_cors import CORS
 import requests
-from collections import defaultdict, Counter
+from collections import Counter
 
 app = Flask(__name__)
 CORS(app)
@@ -15,8 +15,8 @@ def convert_pattern_name(start, line, odd_even):
     odd_even_map = {"ODD": "홀", "EVEN": "짝"}
     return f"{direction}{line_map.get(line, '')}{odd_even_map.get(odd_even, '')}"
 
-# 과거 기준 반복 블럭 분석 기반 예측 (정방향/역방향 포함)
-def smart_predict_from_top(data, block_sizes=(3, 4, 5)):
+# 현재 블럭 기준 과거 매칭 후 다음 결과 예측
+def smart_predict_from_recent(data, block_sizes=(3, 4, 5)):
     pattern_list = [convert_pattern_name(d["start_point"], d["line_count"], d["odd_even"]) for d in data]
     next_pattern_counter = Counter()
 
@@ -24,24 +24,15 @@ def smart_predict_from_top(data, block_sizes=(3, 4, 5)):
         if len(pattern_list) <= block_size:
             continue
 
-        block_followups = defaultdict(list)
-        block_counts = Counter()
+        current_block = pattern_list[:block_size]
+        current_block_rev = list(reversed(current_block))
 
         for i in range(0, len(pattern_list) - block_size):
-            block = tuple(pattern_list[i:i + block_size])
-            block_rev = tuple(reversed(block))
-
-            if i + block_size < len(pattern_list):
-                next_val = pattern_list[i + block_size]
-                block_followups[block].append(next_val)
-                block_followups[block_rev].append(next_val)
-                block_counts[block] += 1
-                block_counts[block_rev] += 1
-
-        if block_counts:
-            most_common_block = block_counts.most_common(1)[0][0]
-            followup_counter = Counter(block_followups[most_common_block])
-            next_pattern_counter.update(followup_counter)
+            past_block = pattern_list[i:i + block_size]
+            if past_block == current_block or past_block == current_block_rev:
+                if i + block_size < len(pattern_list):
+                    next_val = pattern_list[i + block_size]
+                    next_pattern_counter[next_val] += 1
 
     top3 = [pattern for pattern, _ in next_pattern_counter.most_common(3)]
     return top3
@@ -64,7 +55,7 @@ def predict():
             return jsonify({"error": "데이터 부족"}), 500
 
         predict_round = get_predict_round(data)
-        top3_patterns = smart_predict_from_top(data, block_sizes=(3, 4, 5))
+        top3_patterns = smart_predict_from_recent(data, block_sizes=(3, 4, 5))
 
         return jsonify({
             "predict_round": predict_round,
