@@ -15,26 +15,33 @@ def convert_pattern_name(start, line, odd_even):
     odd_even_map = {"ODD": "홀", "EVEN": "짝"}
     return f"{direction}{line_map.get(line, '')}{odd_even_map.get(odd_even, '')}"
 
-# 회차 기준 예측값 생성 (정방향 + 역방향 포함)
-def smart_predict(data, block_sizes=(3, 4, 5)):
+# 과거 기준 반복 블럭 분석 기반 예측 (정방향/역방향 포함)
+def smart_predict_from_top(data, block_sizes=(3, 4, 5)):
     pattern_list = [convert_pattern_name(d["start_point"], d["line_count"], d["odd_even"]) for d in data]
-    latest_block_results = []
     next_pattern_counter = Counter()
 
     for block_size in block_sizes:
         if len(pattern_list) <= block_size:
             continue
 
-        # 현재 기준 블럭 생성
-        current_block = pattern_list[:block_size]                     # 정방향
-        current_block_rev = list(reversed(current_block))            # 역방향
+        block_followups = defaultdict(list)
+        block_counts = Counter()
 
         for i in range(0, len(pattern_list) - block_size):
-            past_block = pattern_list[i:i+block_size]
-            if past_block == current_block or past_block == current_block_rev:
-                if i + block_size < len(pattern_list):
-                    next_pattern = pattern_list[i + block_size]
-                    next_pattern_counter[next_pattern] += 1
+            block = tuple(pattern_list[i:i + block_size])
+            block_rev = tuple(reversed(block))
+
+            if i + block_size < len(pattern_list):
+                next_val = pattern_list[i + block_size]
+                block_followups[block].append(next_val)
+                block_followups[block_rev].append(next_val)
+                block_counts[block] += 1
+                block_counts[block_rev] += 1
+
+        if block_counts:
+            most_common_block = block_counts.most_common(1)[0][0]
+            followup_counter = Counter(block_followups[most_common_block])
+            next_pattern_counter.update(followup_counter)
 
     top3 = [pattern for pattern, _ in next_pattern_counter.most_common(3)]
     return top3
@@ -57,7 +64,7 @@ def predict():
             return jsonify({"error": "데이터 부족"}), 500
 
         predict_round = get_predict_round(data)
-        top3_patterns = smart_predict(data, block_sizes=(3, 4, 5))
+        top3_patterns = smart_predict_from_top(data, block_sizes=(3, 4, 5))
 
         return jsonify({
             "predict_round": predict_round,
