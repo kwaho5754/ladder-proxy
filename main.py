@@ -15,7 +15,7 @@ def convert_pattern_name(start, line, odd_even):
     odd_even_map = {"ODD": "홀", "EVEN": "짝"}
     return f"{direction}{line_map.get(line, '')}{odd_even_map.get(odd_even, '')}"
 
-# 현재 블럭 기준 과거 매칭 후 다음 결과 예측
+# 블럭 기반 예측: 정방향/역방향 + 위/아래 모두 반영
 def smart_predict_from_recent(data, block_sizes=(3, 4, 5)):
     pattern_list = [convert_pattern_name(d["start_point"], d["line_count"], d["odd_even"]) for d in data]
     next_pattern_counter = Counter()
@@ -30,14 +30,22 @@ def smart_predict_from_recent(data, block_sizes=(3, 4, 5)):
         for i in range(0, len(pattern_list) - block_size):
             past_block = pattern_list[i:i + block_size]
             if past_block == current_block or past_block == current_block_rev:
+                # 블럭 다음줄(아래값)
                 if i + block_size < len(pattern_list):
                     next_val = pattern_list[i + block_size]
                     next_pattern_counter[next_val] += 1
+                # 블럭 이전줄(위값)
+                if i - 1 >= 0:
+                    prev_val = pattern_list[i - 1]
+                    next_pattern_counter[prev_val] += 1
 
+    # 예측값 상위 3개 반환 (없으면 '없음' 대체)
     top3 = [pattern for pattern, _ in next_pattern_counter.most_common(3)]
+    while len(top3) < 3:
+        top3.append("없음")
     return top3
 
-# 회차 계산
+# 다음 회차 계산
 def get_predict_round(data):
     try:
         last_round = int(data[0].get("date_round", 0))
@@ -45,6 +53,7 @@ def get_predict_round(data):
     except:
         return 1
 
+# API 경로: /recent-result
 @app.route("/recent-result", methods=["GET"])
 def predict():
     try:
@@ -64,5 +73,6 @@ def predict():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# 서버 실행
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
