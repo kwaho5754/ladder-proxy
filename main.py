@@ -27,7 +27,26 @@ def get_transition_patterns(pattern):
     }
     return transitions.get(pattern, [])
 
-# 예측 로직 (가중치 + 전환 패턴 포함)
+# 대칭 패턴 생성
+def get_symmetric_pattern(pattern):
+    direction_map = {"좌": "우", "우": "좌"}
+    line_map = {"삼": "삼", "사": "사"}
+    odd_even_map = {"홀": "짝", "짝": "홀"}
+
+    if len(pattern) != 4:
+        return None
+
+    direction = pattern[0]
+    line = pattern[1]
+    oe = pattern[2:]
+
+    new_dir = direction_map.get(direction, "")
+    new_line = line_map.get(line, "")
+    new_oe = odd_even_map.get(oe, "")
+
+    return new_dir + new_line + new_oe if new_dir and new_line and new_oe else None
+
+# 예측 함수 (가중치 + 전환 + 대칭 확장 포함)
 def smart_predict_from_recent(data):
     pattern_list = [convert_pattern_name(d["start_point"], d["line_count"], d["odd_even"]) for d in data]
     score_counter = Counter()
@@ -59,9 +78,16 @@ def smart_predict_from_recent(data):
                     candidates.append(pattern_list[i - 1])
 
                 for c in candidates:
-                    score_counter[c] += match_score + 1  # 기본 점수 + 위치 보정
+                    score_counter[c] += match_score + 1  # 기본점수 + 위치보정
+
+                    # 전환 패턴
                     for alt in get_transition_patterns(c):
-                        score_counter[alt] += 1  # 전환 후보는 낮은 점수로 포함
+                        score_counter[alt] += 1
+
+                    # 대칭 패턴
+                    sym = get_symmetric_pattern(c)
+                    if sym:
+                        score_counter[sym] += 1
 
     top3 = [pattern for pattern, _ in score_counter.most_common(3)]
     while len(top3) < 3:
@@ -76,7 +102,7 @@ def get_predict_round(data):
     except:
         return 1
 
-# API 엔드포인트
+# API 경로
 @app.route("/recent-result", methods=["GET"])
 def predict():
     try:
