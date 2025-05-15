@@ -1,73 +1,52 @@
+import os
+import json
+import requests
 from flask import Flask, jsonify
 from flask_cors import CORS
-import csv
-from collections import Counter
 
 app = Flask(__name__)
 CORS(app)
 
-CSV_FILE_PATH = "ladder_results.csv"
-BLOCK_SIZES = [3, 4, 5]
+def fetch_data():
+    url = "https://ntry.com/data/json/games/power_ladder/recent_result.json"
+    response = requests.get(url)
+    return response.json()
 
-def read_csv_data():
-    with open(CSV_FILE_PATH, "r", encoding="utf-8") as file:
-        reader = csv.reader(file)
-        return list(reader)
-
-def extract_patterns(data, block_size):
-    result_patterns = []
-    if len(data) <= block_size:
-        return result_patterns
-
-    current_block = data[-block_size:]  # 최신 블럭 기준
-    reversed_block = current_block[::-1]
-
-    for i in range(len(data) - block_size):
-        compare_block = data[i:i + block_size]
-        before_index = i - 1
-        after_index = i + block_size
-
-        if compare_block == current_block:
-            if after_index < len(data):
-                result_patterns.append(data[after_index][0])
-        if compare_block == reversed_block:
-            if after_index < len(data):
-                result_patterns.append(data[after_index][0])
-        if compare_block == current_block:
-            if before_index >= 0:
-                result_patterns.append(data[before_index][0])
-        if compare_block == reversed_block:
-            if before_index >= 0:
-                result_patterns.append(data[before_index][0])
-
-    return result_patterns
-
-def predict_top_patterns(data):
-    all_predictions = []
-    for block_size in BLOCK_SIZES:
-        all_predictions += extract_patterns(data, block_size)
-
-    if not all_predictions:
-        return []
-
-    counter = Counter(all_predictions)
-    return [item[0] for item in counter.most_common(3)]
-
-def get_next_round(data):
-    if not data:
-        return 1
-    last_round = int(data[-1][3])
-    return last_round + 1
+def get_block_pattern(item):
+    return f"{item['start_point']}{item['line_count']}{'홀' if item['odd_even'] == 'ODD' else '짝'}"
 
 @app.route("/recent-result", methods=["GET"])
-def get_prediction():
-    data = read_csv_data()
-    top3 = predict_top_patterns(data)
-    next_round = get_next_round(data)
-    return jsonify({
-        "predict_round": next_round,
-        "top3_patterns": top3
-    })
+def recent_result():
+    try:
+        data = fetch_data()
+        patterns = [get_block_pattern(item) for item in data]
+
+        block_size = 3
+        recent_blocks = [patterns[i:i+block_size] for i in range(len(patterns)-block_size+1)]
+
+        target_block = recent_blocks[0]
+        top_candidates = []
+
+        for i in range(1, len(recent_blocks)):
+            block = recent_blocks[i]
+            # 정방향 & 역방향 비교
+            if block == target_block or block[::-1] == target_block:
+                if i - 1 >= 0:
+                    top_candidates.append(patterns[i - 1])  # 상단
+                if i + block_size < len(patterns):
+                    top_candidates.append(patterns[i + block_size])  # 하단
+
+        from collections import Counter
+        prediction = Counter(top_candidates).most_common(3)
+        result_patterns = [p[0] for p in prediction]
+
+        return jsonify({
+            "predict_round": int(data[0]["date_round"]) + 1,
+            "top3_patterns": result_patterns
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
-    app.run(debug=False)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
