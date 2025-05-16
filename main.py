@@ -42,10 +42,27 @@ def get_symmetric_pattern(pattern):
     new_oe = odd_even_map.get(oe, "")
     return new_dir + new_line + new_oe if new_dir and new_line and new_oe else None
 
-# 예측 함수 (기존 방식)
-def smart_predict_from_recent(data):
+# 요소별 블럭 기반 균형 조합 계산
+def predict_by_balance_combo(data):
+    pattern_list = [convert_pattern_name(d["start_point"], d["line_count"], d["odd_even"]) for d in data]
+    block_size = 8
+    if len(pattern_list) < block_size:
+        return "없음"
+    recent_block = pattern_list[:block_size]
+    dir_seq = [p[0] for p in recent_block]
+    line_seq = [p[1] for p in recent_block]
+    oe_seq = [p[2:] for p in recent_block]
+    direction = "우" if dir_seq.count("좌") > dir_seq.count("우") else "좌"
+    line = "사" if line_seq.count("삼") > line_seq.count("사") else "삼"
+    oe = "홀" if oe_seq.count("짝") > oe_seq.count("홀") else "짝"
+    return direction + line + oe
+
+# 예측 함수 (블럭 기반 + 균형 점수 반영)
+def smart_predict_from_recent(data, combo):
     pattern_list = [convert_pattern_name(d["start_point"], d["line_count"], d["odd_even"]) for d in data]
     score_counter = Counter()
+    combo_dir, combo_line, combo_oe = combo[0], combo[1], combo[2:]
+
     for block_size in (5, 4, 3):
         if len(pattern_list) <= block_size:
             continue
@@ -67,38 +84,24 @@ def smart_predict_from_recent(data):
                 if i - 1 >= 0:
                     candidates.append(pattern_list[i - 1])
                 for c in candidates:
-                    score_counter[c] += match_score + 1
+                    balance_bonus = 0
+                    if c[0] == combo_dir:
+                        balance_bonus += 1
+                    if c[1] == combo_line:
+                        balance_bonus += 1
+                    if c[2:] == combo_oe:
+                        balance_bonus += 1
+                    total_score = (match_score + 1) + balance_bonus
+                    score_counter[c] += total_score
                     for alt in get_transition_patterns(c):
                         score_counter[alt] += 1
                     sym = get_symmetric_pattern(c)
-                        
                     if sym:
                         score_counter[sym] += 1
     top3 = [pattern for pattern, _ in score_counter.most_common(3)]
     while len(top3) < 3:
         top3.append("없음")
     return top3
-
-# 요소별 블럭 기반 밸런스 조합 추천
-def predict_by_balance_combo(data):
-    pattern_list = [convert_pattern_name(d["start_point"], d["line_count"], d["odd_even"]) for d in data]
-
-    # 블럭 길이 8줄 단위로 최근 블럭 추출 (전체 288개 중)
-    block_size = 8
-    if len(pattern_list) < block_size:
-        return "없음"
-
-    recent_block = pattern_list[:block_size]
-    dir_seq = [p[0] for p in recent_block]       # 방향 시퀀스
-    line_seq = [p[1] for p in recent_block]      # 줄수 시퀀스
-    oe_seq = [p[2:] for p in recent_block]       # 홀짝 시퀀스
-
-    # 각 시퀀스에서 많았던 쪽 → 반대 방향으로 균형 조절
-    direction = "우" if dir_seq.count("좌") > dir_seq.count("우") else "좌"
-    line = "사" if line_seq.count("삼") > line_seq.count("사") else "삼"
-    oe = "홀" if oe_seq.count("짝") > oe_seq.count("홀") else "짝"
-
-    return direction + line + oe
 
 # 예측 회차 계산
 def get_predict_round(data):
@@ -116,8 +119,8 @@ def predict():
         if not data or len(data) < 10:
             return "데이터 부족"
         predict_round = get_predict_round(data)
-        top3 = smart_predict_from_recent(data)
         combo = predict_by_balance_combo(data)
+        top3 = smart_predict_from_recent(data, combo)
         return jsonify({
             "predict_round": predict_round,
             "top3_patterns": top3,
