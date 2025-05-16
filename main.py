@@ -107,17 +107,13 @@ def predict():
         predict_round = get_predict_round(data)
         top3 = smart_predict_from_recent(data)
         combo = predict_by_balance_combo(data)
-        return render_template_string("""
-        <h2>혜칙 실행</h2>
-        <button onclick="window.location.reload()">예칙 실행</button><br><br>
-        예칙 회차: {{ round }}회차<br>
-        1위: {{ top3[0] }}<br>
-        2위: {{ top3[1] }}<br>
-        3위: {{ top3[2] }}<br><br>
-        <strong>관찰 조합 차점을 고려한 예칙: {{ combo }}</strong>
-        """, round=predict_round, top3=top3, combo=combo)
+        return jsonify({
+            "predict_round": predict_round,
+            "top3_patterns": top3,
+            "combo_suggestion": combo
+        })
     except Exception as e:
-        return str(e)
+        return str(e), 500
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
