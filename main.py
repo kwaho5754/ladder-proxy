@@ -1,7 +1,6 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import requests
-from collections import Counter
 
 app = Flask(__name__)
 CORS(app)
@@ -15,59 +14,41 @@ def convert_pattern_name(start, line, odd_even):
     odd_even_map = {"ODD": "홀", "EVEN": "짝"}
     return f"{direction}{line_map.get(line, '')}{odd_even_map.get(odd_even, '')}"
 
-# 불균형 요소 계산 함수
-def get_imbalance_element(patterns):
-    dir_seq = [p[0] for p in patterns]
-    line_seq = [p[1] for p in patterns]
-    oe_seq = [p[2:] for p in patterns]
-    dir_gap = abs(dir_seq.count("좌") - dir_seq.count("우"))
-    line_gap = abs(line_seq.count("삼") - line_seq.count("사"))
-    oe_gap = abs(oe_seq.count("홀") - oe_seq.count("짝"))
-    max_gap = max(dir_gap, line_gap, oe_gap)
-    if max_gap == dir_gap:
-        return "방향"
-    elif max_gap == line_gap:
-        return "줄수"
-    else:
-        return "홀짝"
+# 대칭 변환 함수 (3분의 2 기준)
+def transform_to_symmetry(pattern):
+    if len(pattern) != 4:
+        return None
+    direction = pattern[0]
+    line = pattern[1]
+    oe = pattern[2:]
+    # 좌/우를 3/4로 대응하고 홀/짝 유지
+    line_mirror = "4" if direction == "좌" else "3"
+    oe_mirror = "짝" if line == "3" else "홀"  # 줄수 기준 반전 (예외적 로직)
+    return line_mirror + oe_mirror
 
-# 4~8줄 기준 정방향 또는 역방향 Top5 패턴 추출
-def get_top_patterns(pattern_list, reverse=False):
-    candidates = []
-    if reverse:
-        pattern_list = list(reversed(pattern_list))
-    for size in range(4, 9):
-        if len(pattern_list) >= size:
-            block = pattern_list[:size]
-            dir_seq = [p[0] for p in block]
-            line_seq = [p[1] for p in block]
-            oe_seq = [p[2:] for p in block]
-            direction = "우" if dir_seq.count("좌") > dir_seq.count("우") else "좌"
-            line = "사" if line_seq.count("삼") > line_seq.count("사") else "삼"
-            oe = "홀" if oe_seq.count("짝") > oe_seq.count("홀") else "짝"
-            pattern = direction + line + oe
-            candidates.append(pattern)
-    top5 = [p for p, _ in Counter(candidates).most_common(5)]
-    return top5
-
-# Top1~3 흐름 기반 조합 재구성
-
-def generate_combo_from_top3(top3):
-    dirs = [p[0] for p in top3 if len(p) == 4]
-    lines = [p[1] for p in top3 if len(p) == 4]
-    oes = [p[2:] for p in top3 if len(p) == 4]
-
-    # 조건 완화: 최소 2개 이상 있으면 생성 시도
-    if len(dirs) >= 2 and len(lines) >= 2 and len(oes) >= 2:
-        direction = "우" if dirs.count("좌") > dirs.count("우") else "좌"
-        line = "사" if lines.count("삼") > lines.count("사") else "삼"
-        oe = "홀" if oes.count("짝") > oes.count("홀") else "짝"
-        return direction + line + oe
-    elif len(top3) >= 1:
-        # fallback: 가장 첫 번째 예측값 사용
-        return top3[0]
-    else:
+# 블럭 기반 예측 (상단 블럭 사용)
+def predict_top_by_block(pattern_list, block_size):
+    if len(pattern_list) < block_size:
         return "없음"
+    recent_block = pattern_list[:block_size]
+    recent_partial = recent_block[:block_size - 1]  # 3분의2
+    transformed = [transform_to_symmetry(p) for p in recent_partial if transform_to_symmetry(p)]
+
+    for i in range(block_size, len(pattern_list)):
+        candidate_block = pattern_list[i:i + block_size]
+        if len(candidate_block) < block_size:
+            continue
+        candidate_partial = candidate_block[:block_size - 1]
+        transformed_candidate = [transform_to_symmetry(p) for p in candidate_partial if transform_to_symmetry(p)]
+        if transformed == transformed_candidate:
+            upper_index = i - 1
+            if upper_index >= 0:
+                return pattern_list[upper_index]
+    return "없음"
+
+# 균형 조합 기반은 블럭 2줄 기준 사용
+def predict_combo_by_2block(pattern_list):
+    return predict_top_by_block(pattern_list, block_size=2)
 
 # 예측 회차 계산
 def get_predict_round(data):
@@ -88,20 +69,14 @@ def predict():
         predict_round = get_predict_round(data)
         pattern_list = [convert_pattern_name(d["start_point"], d["line_count"], d["odd_even"]) for d in data]
 
-        # 정방향 + 역방향 Top5 → 총 10개 후보
-        top_patterns_forward = get_top_patterns(pattern_list, reverse=False)
-        top_patterns_reverse = get_top_patterns(pattern_list, reverse=True)
-        all_candidates = top_patterns_forward + top_patterns_reverse
-
-        # 고유한 Top3 추출
-        top3_unique = list(dict.fromkeys(all_candidates))[:3]
-
-        # Top1~3 흐름 기반으로 combo 생성
-        combo = generate_combo_from_top3(top3_unique)
+        top1 = predict_top_by_block(pattern_list, 3)
+        top2 = predict_top_by_block(pattern_list, 4)
+        top3 = predict_top_by_block(pattern_list, 5)
+        combo = predict_combo_by_2block(pattern_list)
 
         return jsonify({
             "predict_round": predict_round,
-            "top3_patterns": top3_unique,
+            "top3_patterns": [top1, top2, top3],
             "combo_suggestion": combo
         })
     except Exception as e:
