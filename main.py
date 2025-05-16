@@ -53,17 +53,21 @@ def get_top_patterns(pattern_list, reverse=False):
 # Top1~3 흐름 기반 조합 재구성
 
 def generate_combo_from_top3(top3):
-    if not top3:
-        return "없음"
     dirs = [p[0] for p in top3 if len(p) == 4]
     lines = [p[1] for p in top3 if len(p) == 4]
     oes = [p[2:] for p in top3 if len(p) == 4]
-    if not dirs or not lines or not oes:
+
+    # 조건 완화: 최소 2개 이상 있으면 생성 시도
+    if len(dirs) >= 2 and len(lines) >= 2 and len(oes) >= 2:
+        direction = "우" if dirs.count("좌") > dirs.count("우") else "좌"
+        line = "사" if lines.count("삼") > lines.count("사") else "삼"
+        oe = "홀" if oes.count("짝") > oes.count("홀") else "짝"
+        return direction + line + oe
+    elif len(top3) >= 1:
+        # fallback: 가장 첫 번째 예측값 사용
+        return top3[0]
+    else:
         return "없음"
-    direction = "우" if dirs.count("좌") > dirs.count("우") else "좌"
-    line = "사" if lines.count("삼") > lines.count("사") else "삼"
-    oe = "홀" if oes.count("짝") > oes.count("홀") else "짝"
-    return direction + line + oe
 
 # 예측 회차 계산
 def get_predict_round(data):
