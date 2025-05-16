@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, render_template_string, request
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 import requests
 from collections import Counter
@@ -8,80 +8,78 @@ CORS(app)
 
 DATA_URL = "https://ntry.com/data/json/games/power_ladder/recent_result.json"
 
-# 결과 패턴 이름 변환
+# 패턴 변환 함수
 def convert_pattern_name(start, line, odd_even):
     direction = "좌" if start == "LEFT" else "우"
     line_map = {"3": "삼", "4": "사"}
     odd_even_map = {"ODD": "홀", "EVEN": "짝"}
     return f"{direction}{line_map.get(line, '')}{odd_even_map.get(odd_even, '')}"
 
-# 전환 패턴 사전 정의
-def get_transition_patterns(pattern):
-    transitions = {
-        "우사짝": ["우삼홀", "좌삼짝", "좌사홀"],
-        "좌삼홀": ["우삼홀", "우사짝", "좌사짝"],
-        "우사홀": ["좌사홀", "우삼홀", "좌삼짝"],
-        "좌사홀": ["좌삼짝", "우사짝", "우삼홀"],
-        "좌삼짝": ["우사짝", "좌사짝", "우삼홀"],
-        "우삼홀": ["우사짝", "좌삼짝", "좌사짝"],
-    }
-    return transitions.get(pattern, [])
+# 불균형 요소 계산 함수
+def get_imbalance_element(patterns):
+    dir_seq = [p[0] for p in patterns]
+    line_seq = [p[1] for p in patterns]
+    oe_seq = [p[2:] for p in patterns]
+    dir_gap = abs(dir_seq.count("좌") - dir_seq.count("우"))
+    line_gap = abs(line_seq.count("삼") - line_seq.count("사"))
+    oe_gap = abs(oe_seq.count("홀") - oe_seq.count("짝"))
+    max_gap = max(dir_gap, line_gap, oe_gap)
+    if max_gap == dir_gap:
+        return "방향"
+    elif max_gap == line_gap:
+        return "줄수"
+    else:
+        return "홀짝"
 
-# 대칭 패턴 생성
-def get_symmetric_pattern(pattern):
-    direction_map = {"좌": "우", "우": "좌"}
-    line_map = {"삼": "삼", "사": "사"}
-    odd_even_map = {"홀": "짝", "짝": "홀"}
-    if len(pattern) != 4:
-        return None
-    direction = pattern[0]
-    line = pattern[1]
-    oe = pattern[2:]
-    new_dir = direction_map.get(direction, "")
-    new_line = line_map.get(line, "")
-    new_oe = odd_even_map.get(oe, "")
-    return new_dir + new_line + new_oe if new_dir and new_line and new_oe else None
+# 4~8줄 기준 정방향 또는 역방향 Top5 패턴 추출
+def get_top_patterns(pattern_list, reverse=False):
+    candidates = []
+    if reverse:
+        pattern_list = list(reversed(pattern_list))
+    for size in range(4, 9):
+        if len(pattern_list) >= size:
+            block = pattern_list[:size]
+            dir_seq = [p[0] for p in block]
+            line_seq = [p[1] for p in block]
+            oe_seq = [p[2:] for p in block]
+            direction = "우" if dir_seq.count("좌") > dir_seq.count("우") else "좌"
+            line = "사" if line_seq.count("삼") > line_seq.count("사") else "삼"
+            oe = "홀" if oe_seq.count("짝") > oe_seq.count("홀") else "짝"
+            pattern = direction + line + oe
+            candidates.append(pattern)
+    top5 = [p for p, _ in Counter(candidates).most_common(5)]
+    return top5
 
-# 요소별 블럭 기반 균형 조합 계산
-def predict_by_balance_combo(data):
-    pattern_list = [convert_pattern_name(d["start_point"], d["line_count"], d["odd_even"]) for d in data]
-    block_size = 8
-    if len(pattern_list) < block_size:
+# 최종 combo 예측 계산
+
+def generate_combo_suggestion(all_patterns):
+    if not all_patterns:
         return "없음"
-    recent_block = pattern_list[:block_size]
-    dir_seq = [p[0] for p in recent_block]
-    line_seq = [p[1] for p in recent_block]
-    oe_seq = [p[2:] for p in recent_block]
-    direction = "우" if dir_seq.count("좌") > dir_seq.count("우") else "좌"
-    line = "사" if line_seq.count("삼") > line_seq.count("사") else "삼"
-    oe = "홀" if oe_seq.count("짝") > oe_seq.count("홀") else "짝"
-    return direction + line + oe
+    counter = Counter(all_patterns)
+    if not counter:
+        return "없음"
 
-# 역방향 기반 Top3 예측 함수 (요소별 분리)
-def smart_predict_from_recent(data):
-    pattern_list = [convert_pattern_name(d["start_point"], d["line_count"], d["odd_even"]) for d in data]
-    pattern_list = list(reversed(pattern_list))  # 역방향 분석
-    block_size = 8
-    if len(pattern_list) < block_size:
-        return ["없음", "없음", "없음"]
-    recent_block = pattern_list[:block_size]
-    dir_seq = [p[0] for p in recent_block]
-    line_seq = [p[1] for p in recent_block]
-    oe_seq = [p[2:] for p in recent_block]
+    # 1위: 가장 많이 나온 것
+    top1 = counter.most_common(1)[0][0]
 
-    # Top1: 방향만 반영
-    direction = "우" if dir_seq.count("좌") > dir_seq.count("우") else "좌"
-    top1 = direction + "삼" + "홀"
+    # 2위: 가장 적게 나온 것 (1번은 제외)
+    filtered = [item for item in counter.items() if item[0] != top1]
+    if filtered:
+        top2 = sorted(filtered, key=lambda x: x[1])[0][0]
+    else:
+        top2 = "없음"
 
-    # Top2: 줄수만 반영
-    line = "사" if line_seq.count("삼") > line_seq.count("사") else "삼"
-    top2 = "좌" + line + "홀"
+    # 3위: 유동적 - 불균형 요소 기반 방향 제안
+    imbalance = get_imbalance_element(all_patterns)
+    top3 = "없음"
+    if imbalance == "방향":
+        top3 = top1[0] + "삼홀"
+    elif imbalance == "줄수":
+        top3 = "좌" + top1[1] + "홀"
+    elif imbalance == "홀짝":
+        top3 = "좌삼" + top1[2:]
 
-    # Top3: 홀짝만 반영
-    oe = "홀" if oe_seq.count("짝") > oe_seq.count("홀") else "짝"
-    top3 = "좌" + "삼" + oe
-
-    return [top1, top2, top3]
+    return Counter([top1, top2, top3]).most_common(1)[0][0]
 
 # 예측 회차 계산
 def get_predict_round(data):
@@ -98,12 +96,21 @@ def predict():
         data = response.json()
         if not data or len(data) < 10:
             return "데이터 부족"
+
         predict_round = get_predict_round(data)
-        combo = predict_by_balance_combo(data)
-        top3 = smart_predict_from_recent(data)
+        pattern_list = [convert_pattern_name(d["start_point"], d["line_count"], d["odd_even"]) for d in data]
+
+        # 정방향 + 역방향 Top5 → 총 10개 후보
+        top_patterns_forward = get_top_patterns(pattern_list, reverse=False)
+        top_patterns_reverse = get_top_patterns(pattern_list, reverse=True)
+        all_candidates = top_patterns_forward + top_patterns_reverse
+
+        # 최종 조합 기반 예측 1개
+        combo = generate_combo_suggestion(all_candidates)
+
         return jsonify({
             "predict_round": predict_round,
-            "top3_patterns": top3,
+            "top3_patterns": all_candidates[:3],
             "combo_suggestion": combo
         })
     except Exception as e:
