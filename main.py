@@ -57,25 +57,28 @@ def predict_by_balance_combo(data):
     oe = "홀" if oe_seq.count("짝") > oe_seq.count("홀") else "짝"
     return direction + line + oe
 
-# 예측 함수 (Top3: 11줄, 10줄, 9줄 기준)
+# 예측 함수 (Top1: 좌우 기반 / Top2: 삼사 기반 / Top3: 홀짝 기반)
 def smart_predict_from_recent(data):
     pattern_list = [convert_pattern_name(d["start_point"], d["line_count"], d["odd_even"]) for d in data]
+    block_size = 8
+    if len(pattern_list) < block_size:
+        return ["없음", "없음", "없음"]
+    recent_block = pattern_list[:block_size]
+    dir_seq = [p[0] for p in recent_block]
+    line_seq = [p[1] for p in recent_block]
+    oe_seq = [p[2:] for p in recent_block]
 
-    def extract_combo(block_size):
-        if len(pattern_list) < block_size:
-            return "없음"
-        block = pattern_list[:block_size]
-        dir_seq = [p[0] for p in block]
-        line_seq = [p[1] for p in block]
-        oe_seq = [p[2:] for p in block]
-        direction = "우" if dir_seq.count("좌") > dir_seq.count("우") else "좌"
-        line = "사" if line_seq.count("삼") > line_seq.count("사") else "삼"
-        oe = "홀" if oe_seq.count("짝") > oe_seq.count("홀") else "짝"
-        return direction + line + oe
+    # Top1: 방향만 반영
+    direction = "우" if dir_seq.count("좌") > dir_seq.count("우") else "좌"
+    top1 = direction + "삼" + "홀"
 
-    top1 = extract_combo(11)
-    top2 = extract_combo(10)
-    top3 = extract_combo(9)
+    # Top2: 줄수만 반영
+    line = "사" if line_seq.count("삼") > line_seq.count("사") else "삼"
+    top2 = "좌" + line + "홀"
+
+    # Top3: 홀짝만 반영
+    oe = "홀" if oe_seq.count("짝") > oe_seq.count("홀") else "짝"
+    top3 = "좌" + "삼" + oe
 
     return [top1, top2, top3]
 
