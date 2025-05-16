@@ -57,10 +57,9 @@ def predict_by_balance_combo(data):
     oe = "홀" if oe_seq.count("짝") > oe_seq.count("홀") else "짝"
     return direction + line + oe
 
-# 예측 함수 (Top3: 6줄, 4줄, 2줄 기준)
+# 예측 함수 (Top3: 11줄, 10줄, 9줄 기준)
 def smart_predict_from_recent(data):
     pattern_list = [convert_pattern_name(d["start_point"], d["line_count"], d["odd_even"]) for d in data]
-    candidates = []
 
     def extract_combo(block_size):
         if len(pattern_list) < block_size:
@@ -74,9 +73,9 @@ def smart_predict_from_recent(data):
         oe = "홀" if oe_seq.count("짝") > oe_seq.count("홀") else "짝"
         return direction + line + oe
 
-    top1 = extract_combo(6)
-    top2 = extract_combo(4)
-    top3 = extract_combo(2)
+    top1 = extract_combo(11)
+    top2 = extract_combo(10)
+    top3 = extract_combo(9)
 
     return [top1, top2, top3]
 
