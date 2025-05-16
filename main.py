@@ -50,36 +50,20 @@ def get_top_patterns(pattern_list, reverse=False):
     top5 = [p for p, _ in Counter(candidates).most_common(5)]
     return top5
 
-# 최종 combo 예측 계산
+# Top1~3 흐름 기반 조합 재구성
 
-def generate_combo_suggestion(all_patterns):
-    if not all_patterns:
+def generate_combo_from_top3(top3):
+    if not top3:
         return "없음"
-    counter = Counter(all_patterns)
-    if not counter:
+    dirs = [p[0] for p in top3 if len(p) == 4]
+    lines = [p[1] for p in top3 if len(p) == 4]
+    oes = [p[2:] for p in top3 if len(p) == 4]
+    if not dirs or not lines or not oes:
         return "없음"
-
-    # 1위: 가장 많이 나온 것
-    top1 = counter.most_common(1)[0][0]
-
-    # 2위: 가장 적게 나온 것 (1번은 제외)
-    filtered = [item for item in counter.items() if item[0] != top1]
-    if filtered:
-        top2 = sorted(filtered, key=lambda x: x[1])[0][0]
-    else:
-        top2 = "없음"
-
-    # 3위: 유동적 - 불균형 요소 기반 방향 제안
-    imbalance = get_imbalance_element(all_patterns)
-    top3 = "없음"
-    if imbalance == "방향":
-        top3 = top1[0] + "삼홀"
-    elif imbalance == "줄수":
-        top3 = "좌" + top1[1] + "홀"
-    elif imbalance == "홀짝":
-        top3 = "좌삼" + top1[2:]
-
-    return Counter([top1, top2, top3]).most_common(1)[0][0]
+    direction = "우" if dirs.count("좌") > dirs.count("우") else "좌"
+    line = "사" if lines.count("삼") > lines.count("사") else "삼"
+    oe = "홀" if oes.count("짝") > oes.count("홀") else "짝"
+    return direction + line + oe
 
 # 예측 회차 계산
 def get_predict_round(data):
@@ -105,12 +89,15 @@ def predict():
         top_patterns_reverse = get_top_patterns(pattern_list, reverse=True)
         all_candidates = top_patterns_forward + top_patterns_reverse
 
-        # 최종 조합 기반 예측 1개
-        combo = generate_combo_suggestion(all_candidates)
+        # 고유한 Top3 추출
+        top3_unique = list(dict.fromkeys(all_candidates))[:3]
+
+        # Top1~3 흐름 기반으로 combo 생성
+        combo = generate_combo_from_top3(top3_unique)
 
         return jsonify({
             "predict_round": predict_round,
-            "top3_patterns": all_candidates[:3],
+            "top3_patterns": top3_unique,
             "combo_suggestion": combo
         })
     except Exception as e:
