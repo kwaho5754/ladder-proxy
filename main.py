@@ -57,9 +57,10 @@ def predict_by_balance_combo(data):
     oe = "홀" if oe_seq.count("짝") > oe_seq.count("홀") else "짝"
     return direction + line + oe
 
-# 예측 함수 (Top1: 좌우 기반 / Top2: 삼사 기반 / Top3: 홀짝 기반)
+# 역방향 기반 Top3 예측 함수 (요소별 분리)
 def smart_predict_from_recent(data):
     pattern_list = [convert_pattern_name(d["start_point"], d["line_count"], d["odd_even"]) for d in data]
+    pattern_list = list(reversed(pattern_list))  # 역방향 분석
     block_size = 8
     if len(pattern_list) < block_size:
         return ["없음", "없음", "없음"]
