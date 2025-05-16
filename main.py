@@ -71,6 +71,7 @@ def smart_predict_from_recent(data):
                     for alt in get_transition_patterns(c):
                         score_counter[alt] += 1
                     sym = get_symmetric_pattern(c)
+                        
                     if sym:
                         score_counter[sym] += 1
     top3 = [pattern for pattern, _ in score_counter.most_common(3)]
@@ -78,15 +79,25 @@ def smart_predict_from_recent(data):
         top3.append("없음")
     return top3
 
-# 요소별 밸런스 조합 추천
+# 요소별 블럭 기반 밸런스 조합 추천
 def predict_by_balance_combo(data):
-    pattern_list = [convert_pattern_name(d["start_point"], d["line_count"], d["odd_even"]) for d in data[:100]]
-    dir_count = Counter([p[0] for p in pattern_list])
-    line_count = Counter([p[1] for p in pattern_list])
-    oe_count = Counter([p[2:] for p in pattern_list])
-    direction = "우" if dir_count["좌"] > dir_count["우"] else "좌"
-    line = "사" if line_count["삼"] > line_count["사"] else "삼"
-    oe = "홀" if oe_count["짝"] > oe_count["홀"] else "짝"
+    pattern_list = [convert_pattern_name(d["start_point"], d["line_count"], d["odd_even"]) for d in data]
+
+    # 블럭 길이 8줄 단위로 최근 블럭 추출 (전체 288개 중)
+    block_size = 8
+    if len(pattern_list) < block_size:
+        return "없음"
+
+    recent_block = pattern_list[:block_size]
+    dir_seq = [p[0] for p in recent_block]       # 방향 시퀀스
+    line_seq = [p[1] for p in recent_block]      # 줄수 시퀀스
+    oe_seq = [p[2:] for p in recent_block]       # 홀짝 시퀀스
+
+    # 각 시퀀스에서 많았던 쪽 → 반대 방향으로 균형 조절
+    direction = "우" if dir_seq.count("좌") > dir_seq.count("우") else "좌"
+    line = "사" if line_seq.count("삼") > line_seq.count("사") else "삼"
+    oe = "홀" if oe_seq.count("짝") > oe_seq.count("홀") else "짝"
+
     return direction + line + oe
 
 # 예측 회차 계산
