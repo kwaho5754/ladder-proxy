@@ -1,84 +1,78 @@
 from flask import Flask, jsonify
 from flask_cors import CORS
 import requests
-from collections import Counter
 
 app = Flask(__name__)
 CORS(app)
 
-URL = "https://ntry.com/data/json/games/power_ladder/recent_result.json"
+# 📦 예측 블럭 개수 범위
+BLOCK_SIZES = [2, 3, 4, 5, 6]
 
-
-def fetch_recent_data():
-    response = requests.get(URL)
-    if response.status_code == 200:
+# 📥 외부 JSON 데이터 로드 함수
+def fetch_data():
+    url = "https://ntry.com/data/json/games/power_ladder/recent_result.json"
+    try:
+        response = requests.get(url)
         return response.json()
-    return []
-
-
-def build_blocks(data, direction="front", block_size=2):
-    blocks = []
-    total = len(data)
-    rng = range(total - block_size)
-    for i in rng:
-        if direction == "front":
-            block = tuple(data[i + j]["result"] for j in range(block_size))
-            next_value = data[i + block_size]["result"]
-        elif direction == "back":
-            block = tuple(data[i + j]["result"] for j in range(block_size))
-            next_value = data[i - 1]["result"] if i > 0 else None
-        else:
-            continue
-        if next_value:
-            blocks.append((block, next_value))
-    return blocks
-
-
-def find_matches(data, direction="front", block_size=2):
-    if len(data) < block_size + 1:
+    except:
         return []
 
-    if direction == "front":
-        current_block = tuple(data[-block_size + i]["result"] for i in range(block_size))
-    else:  # back
-        current_block = tuple(data[-(i + 1)]["result"] for i in reversed(range(block_size)))
+# 🔍 블럭 패턴 생성 함수 (블럭 리스트 반환)
+def make_blocks(data, reverse=False):
+    data = list(reversed(data)) if reverse else data[:]
+    blocks = []
+    for size in BLOCK_SIZES:
+        if len(data) > size:
+            block = tuple([row["start_point"][0] + row["line_count"] + row["odd_even"] for row in data[:size]])
+            blocks.append(block)
+    return blocks
 
-    block_data = build_blocks(data[:-1], direction, block_size)
-    matches = [next_value for block, next_value in block_data if block == current_block]
+# 🧠 과거 블럭 비교 함수 (정방향/역방향 모두 사용)
+def find_matches(all_data, target_blocks):
+    matches = []
+    for i in range(len(all_data) - 6):
+        past_segment = all_data[i:i+6]  # 최대 6줄 비교
+        for size in BLOCK_SIZES:
+            if len(past_segment) >= size:
+                block = tuple([row["start_point"][0] + row["line_count"] + row["odd_even"] for row in past_segment[:size]])
+                if block in target_blocks:
+                    matches.append(all_data[i-1]["start_point"][0] + all_data[i-1]["line_count"] + all_data[i-1]["odd_even"])
+                    break
     return matches
 
-
-def get_predictions(data, direction):
-    all_matches = []
-    for size in range(2, 7):  # 블럭 사이즈 2~6
-        matches = find_matches(data, direction, block_size=size)
-        all_matches.extend(matches)
-
-    if not all_matches:
-        return ["데이터 없음"]
-
-    freq = Counter(all_matches)
-    ranked = [f"{key}" for key, _ in freq.most_common(5)]
-    return ranked
-
+# 🔢 상위 빈도수 추출 함수 (중복 제거 후 상위 5개)
+def get_top(predictions):
+    freq = {}
+    for p in predictions:
+        freq[p] = freq.get(p, 0) + 1
+    sorted_freq = sorted(freq.items(), key=lambda x: x[1], reverse=True)
+    return [item[0] for item in sorted_freq[:5]]
 
 @app.route("/predict")
 def predict():
-    data = fetch_recent_data()
-    if not data:
-        return jsonify({"error": "데이터 로드 실패"}), 500
+    all_data = fetch_data()
+    if not all_data or len(all_data) < 10:
+        return jsonify({"error": "데이터 없음"})
 
-    front_predictions = get_predictions(data, direction="front")
-    back_predictions = get_predictions(data, direction="back")
-    round_number = int(data[-1]["date_round"]) + 1 if data else 0
+    # ✅ 앞 기준 (정방향): 최신 2~6줄로 블럭 생성 → 과거 동일 패턴 찾기
+    front_blocks = make_blocks(all_data[-288:])  # 최신 기준 블럭 생성
+    front_matches = find_matches(all_data, front_blocks)
+    front_top5 = get_top(front_matches)
+
+    # ✅ 뒤 기준 (역방향): 가장 끝 2~6줄을 뒤에서부터 블럭 구성 → 과거 동일 패턴 찾기
+    reversed_data = list(reversed(all_data[-288:]))
+    back_blocks = make_blocks(reversed_data, reverse=True)
+    back_matches = find_matches(all_data, back_blocks)
+    back_top5 = get_top(back_matches)
+
+    round_number = int(all_data[0]["date_round"]) + 1
 
     return jsonify({
-        "front_predictions": front_predictions,
-        "back_predictions": back_predictions,
-        "predict_round": round_number
+        "predict_round": round_number,
+        "front_predictions": front_top5,
+        "back_predictions": back_top5
     })
 
-
-if __name__ == "__main__":
-    # Railway에서 외부 접근 허용하려면 host/port 지정 필수
+if __name__ == '__main__':
+    # ✅ Railway 외부 접속 허용 설정 포함
     app.run(debug=True, host="0.0.0.0", port=5000)
