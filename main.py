@@ -8,14 +8,11 @@ CORS(app)
 
 DATA_URL = "https://ntry.com/data/json/games/power_ladder/recent_result.json"
 
-# 변환 함수: LEFT, 3, ODD → 좌삼홀 등으로
 def convert_pattern_name(start, line, odd_even):
     direction = "좌" if start == "LEFT" else "우"
     line_map = {"3": "삼", "4": "사"}
     odd_even_map = {"ODD": "홀", "EVEN": "짝"}
     return f"{direction}{line_map.get(line, '')}{odd_even_map.get(odd_even, '')}"
-
-# 대칭 변환 함수 수정: '우삼홀' 같은 패턴도 처리 가능하게
 
 def transform_to_symmetry(pattern):
     if not pattern or len(pattern) < 3:
@@ -34,13 +31,11 @@ def transform_to_symmetry(pattern):
         odd_even_map.get(odd_even, "")
     )
 
-# 블럭 예측 함수
-
 def predict_block_patterns(pattern_list, position="front"):
     predictions = []
     data_length = len(pattern_list)
 
-    for block_size in range(2, 7):
+    for block_size in range(2, 6):  # 블럭 길이 2~5까지만
         if position == "front":
             base_block = pattern_list[-block_size:]
         elif position == "back":
