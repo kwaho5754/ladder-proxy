@@ -36,58 +36,63 @@ def make_forward_blocks(data):
         if len(data) >= size:
             segment = data[-size:]
             block = tuple([encode(row) for row in segment])
-            blocks.append(block)
+            blocks.append((block, size))
     return blocks
 
-def make_backward_blocks(data):
+def make_reverse_blocks(data):
     blocks = []
     for size in BLOCK_SIZES:
         if len(data) >= size:
-            segment = data[:size]
-            block = tuple([encode(row) for row in segment[::-1]])
-            blocks.append(block)
+            segment = data[-size:]
+            block = tuple([encode(row)[-2:] for row in segment])
+            blocks.append((block, size))
     return blocks
 
-def find_predictions(data, blocks):
-    candidates = []
-    for i in range(len(data)):
-        for size in BLOCK_SIZES:
-            if i + size < len(data):
-                segment = tuple([encode(row) for row in data[i:i+size]])
-                if segment in blocks:
-                    candidates.append(encode(data[i-1]))
-    return candidates
+def find_matches(all_data, target_block, size, mode="forward"):
+    matches = []
+    for i in range(len(all_data) - size):
+        segment = all_data[i:i+size]
+        if mode == "forward":
+            block = tuple([encode(row) for row in segment])
+        else:
+            block = tuple([encode(row)[-2:] for row in segment])
 
-def get_top(predictions, direction):
-    counter = Counter(predictions)
-    print(f"[{direction}] 전체 예측 후보 수: {len(predictions)}")
-    for key, value in counter.most_common():
-        print(f"[{direction}] 후보: {key} ➝ {value}회")
-    top = [to_korean(pred[0]) + to_korean(pred[1]) + to_korean(pred[2]) for pred, _ in counter.most_common(5)]
-    print(f"[{direction}] 최종 예측 Top: {top}")
-    return top
+        if block == target_block and i > 0:
+            matches.append(encode(all_data[i - 1]))
+    return matches
+
+def get_top(predictions, count=5):
+    freq = Counter(predictions)
+    sorted_items = freq.most_common(count)
+    result = [val for val, _ in sorted_items]
+    return result
 
 @app.route("/predict")
 def predict():
-    raw_data = fetch_data()
-    if not raw_data:
-        return jsonify({"예측회차": None, "앞방향_예측값": [], "뒤방향_예측값": []})
+    all_data = fetch_data()
+    if not all_data or len(all_data) < 10:
+        return jsonify({"오류": "데이터 부족"})
 
-    data = raw_data[-288:]
-    forward_blocks = make_forward_blocks(data)
-    backward_blocks = make_backward_blocks(data[::-1])
+    recent_data = all_data[-288:]
 
-    forward_preds = find_predictions(data, forward_blocks)
-    backward_preds = find_predictions(data[::-1], backward_blocks)
+    front_predictions = []
+    front_blocks = make_forward_blocks(recent_data)
+    for block, size in front_blocks:
+        matches = find_matches(all_data, block, size, mode="forward")
+        front_predictions.extend(matches)
 
-    top_forward = get_top(forward_preds, "앞")
-    top_backward = get_top(backward_preds, "뒤")
+    back_predictions = []
+    back_blocks = make_reverse_blocks(recent_data)
+    for block, size in back_blocks:
+        matches = find_matches(all_data, block, size, mode="reverse")
+        back_predictions.extend(matches)
 
-    round_number = 100 + len(raw_data)  # 예시 기준 회차
+    round_number = int(all_data[0]["date_round"]) + 1
+
     return jsonify({
         "예측회차": round_number,
-        "앞방향_예측값": top_forward,
-        "뒤방향_예측값": top_backward
+        "앞방향_예측값": [to_korean(v) for v in get_top(front_predictions, 5)],
+        "뒤방향_예측값": [to_korean(v) for v in get_top(back_predictions, 5)]
     })
 
 if __name__ == '__main__':
