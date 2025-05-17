@@ -6,12 +6,17 @@ from collections import Counter
 app = Flask(__name__)
 CORS(app)
 
-BLOCK_SIZES = [2, 3]
+BLOCK_SIZES = [2, 3]  # 2줄, 3줄 블럭만 사용
 
 KOR_MAP = {
-    "L": "좌", "R": "우",
-    "1": "1", "2": "2", "3": "3", "4": "4",
-    "ODD": "홀", "EVEN": "짝"
+    "L": "좌",
+    "R": "우",
+    "1": "1",
+    "2": "2",
+    "3": "3",
+    "4": "4",
+    "ODD": "홀",
+    "EVEN": "짝",
 }
 
 def to_korean(code):
@@ -30,70 +35,55 @@ def fetch_data():
 def encode(row):
     return row["start_point"][0] + row["line_count"] + row["odd_even"]
 
-def make_forward_blocks(data):
+def make_blocks(data, reverse=False):
     blocks = []
     for size in BLOCK_SIZES:
         if len(data) >= size:
-            segment = data[-size:]
-            block = tuple([encode(row) for row in segment])
-            blocks.append((block, size))
+            segment = data[-size:] if not reverse else data[:size]
+            block = tuple(encode(row) for row in segment)
+            blocks.append(block[::-1] if reverse else block)
     return blocks
 
-def make_reverse_blocks(data):
-    blocks = []
-    for size in BLOCK_SIZES:
-        if len(data) >= size:
-            segment = data[-size:]
-            block = tuple([encode(row)[-2:] for row in segment])
-            blocks.append((block, size))
-    return blocks
-
-def find_matches(all_data, target_block, size, mode="forward"):
-    matches = []
-    for i in range(len(all_data) - size):
-        segment = all_data[i:i+size]
-        if mode == "forward":
-            block = tuple([encode(row) for row in segment])
-        else:
-            block = tuple([encode(row)[-2:] for row in segment])
-
-        if block == target_block and i > 0:
-            matches.append(encode(all_data[i - 1]))
-    return matches
-
-def get_top(predictions, count=5):
-    freq = Counter(predictions)
-    sorted_items = freq.most_common(count)
-    result = [val for val, _ in sorted_items]
-    return result
+def find_matches(data, target_blocks, reverse=False):
+    candidates = []
+    data_range = range(len(data))
+    for i in data_range:
+        for size in BLOCK_SIZES:
+            if i + size < len(data):
+                block = tuple(encode(data[i + j]) for j in range(size))
+                if reverse:
+                    block = block[::-1]
+                if block in target_blocks:
+                    next_index = i - 1 if reverse else i + size
+                    if 0 <= next_index < len(data):
+                        candidates.append(encode(data[next_index]))
+    return Counter(candidates)
 
 @app.route("/predict")
 def predict():
-    all_data = fetch_data()
-    if not all_data or len(all_data) < 10:
-        return jsonify({"오류": "데이터 부족"})
+    data = fetch_data()
+    if len(data) < 10:
+        return jsonify({"error": "데이터 부족"})
 
-    recent_data = all_data[-288:]
+    forward_blocks = make_blocks(data[-288:], reverse=False)
+    backward_blocks = make_blocks(data[-288:], reverse=True)
 
-    front_predictions = []
-    front_blocks = make_forward_blocks(recent_data)
-    for block, size in front_blocks:
-        matches = find_matches(all_data, block, size, mode="forward")
-        front_predictions.extend(matches)
+    forward_counter = find_matches(data[:-1], forward_blocks, reverse=False)
+    backward_counter = find_matches(data[:-1], backward_blocks, reverse=True)
 
-    back_predictions = []
-    back_blocks = make_reverse_blocks(recent_data)
-    for block, size in back_blocks:
-        matches = find_matches(all_data, block, size, mode="reverse")
-        back_predictions.extend(matches)
+    print("\n[디버깅] 앞 블럭:", forward_blocks, flush=True)
+    print("[디버깅] 뒤 블럭:", backward_blocks, flush=True)
+    print("[디버깅] 앞 후보 수:", len(forward_counter), flush=True)
+    print("[디버깅] 뒤 후보 수:", len(backward_counter), flush=True)
 
-    round_number = int(all_data[0]["date_round"]) + 1
+    top_forward = [to_korean(code) for code, _ in forward_counter.most_common(5)]
+    top_backward = [to_korean(code) for code, _ in backward_counter.most_common(5)]
 
     return jsonify({
-        "예측회차": round_number,
-        "앞방향_예측값": [to_korean(v) for v in get_top(front_predictions, 5)],
-        "뒤방향_예측값": [to_korean(v) for v in get_top(back_predictions, 5)]
+        "앞방향_예측값": top_forward,
+        "뒤방향_예측값": top_backward,
+        "예측회차": len(data)
     })
 
-if __name__ == '__main__':
-    app.run(debug=True, host="0.0.0.0", port=5000)
+if __name__ == "__main__":
+    app.run(debug=True, port=5000)
