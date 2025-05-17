@@ -24,7 +24,7 @@ def transform_to_symmetry(pattern):
     oe_mirror = "짝" if line == "3" else "홀"
     return line_mirror + oe_mirror
 
-# 정방향 예측 함수 (앞 3분의2 블럭 기준)
+# 앞 기준 예측 함수 (정방향 블럭 기반)
 def predict_by_partial_block(pattern_list, block_size):
     if len(pattern_list) < block_size:
         return "없음"
@@ -39,24 +39,28 @@ def predict_by_partial_block(pattern_list, block_size):
         candidate_partial = candidate_block[:block_size - 1]
         transformed_candidate = [transform_to_symmetry(p) for p in candidate_partial if transform_to_symmetry(p)]
         if transformed == transformed_candidate:
-            return pattern_list[i]
+            return pattern_list[i]  # 블럭의 상단
     return "없음"
 
-# 역방향 예측 함수 (뒤 3분의2 블럭 기준)
+# 뒤 기준 예측 함수 (역방향 블럭 조립 후 정방향 비교)
 def predict_by_reverse_flow(pattern_list, block_size):
     if len(pattern_list) < block_size:
         return "없음"
-    block = pattern_list[:block_size][::-1]  # 최근에서 과거로 거꾸로 블럭 조립
-    partial = block[:block_size - 1]         # 앞 방향으로 쪼갬 (최근 줄부터 기준)
+
+    # 최근 block_size줄을 역방향 조립
+    reverse_block = pattern_list[:block_size][::-1]
+    partial = reverse_block[:block_size - 1]
     transformed = [transform_to_symmetry(p) for p in partial if transform_to_symmetry(p)]
 
     for i in range(block_size, len(pattern_list)):
-        candidate = pattern_list[i:i + block_size][::-1]  # 과거 블럭도 뒤에서부터 거꾸로 구성
-        candidate_partial = candidate[:block_size - 1]
+        candidate_block = pattern_list[i - block_size:i][::-1]  # 과거에서 역방향으로 구성
+        candidate_partial = candidate_block[:block_size - 1]
         transformed_candidate = [transform_to_symmetry(p) for p in candidate_partial if transform_to_symmetry(p)]
 
         if transformed == transformed_candidate:
-            return pattern_list[i]  # 블럭의 상단값 (가장 최근줄)
+            upper_index = i - block_size - 1
+            if upper_index >= 0:
+                return pattern_list[upper_index]
     return "없음"
 
 # 예측 회차 계산
