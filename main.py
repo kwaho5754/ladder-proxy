@@ -24,7 +24,7 @@ def transform_to_symmetry(pattern):
     oe_mirror = "짝" if line == "3" else "홀"
     return line_mirror + oe_mirror
 
-# 정방향 예측 함수 (앞 3분의2)
+# 정방향 예측 함수 (앞 3분의2 블럭 기준)
 def predict_by_partial_block(pattern_list, block_size):
     if len(pattern_list) < block_size:
         return "없음"
@@ -39,27 +39,24 @@ def predict_by_partial_block(pattern_list, block_size):
         candidate_partial = candidate_block[:block_size - 1]
         transformed_candidate = [transform_to_symmetry(p) for p in candidate_partial if transform_to_symmetry(p)]
         if transformed == transformed_candidate:
-            upper_index = i - 1
-            if upper_index >= 0:
-                return pattern_list[upper_index]
+            return pattern_list[i]
     return "없음"
 
-# 역방향 예측 함수 (뒤 기준 블럭을 앞 방향으로 대칭)
+# 역방향 예측 함수 (뒤 3분의2 블럭 기준)
 def predict_by_reverse_flow(pattern_list, block_size):
     if len(pattern_list) < block_size:
         return "없음"
-    block = pattern_list[-block_size:][::-1]  # 뒤에서부터 블럭 추출 후 역순
-    partial = block[:block_size - 1]  # 앞에서부터 자름 (이게 실제 흐름의 기준)
+    block = pattern_list[:block_size][::-1]  # 최근에서 과거로 거꾸로 블럭 조립
+    partial = block[:block_size - 1]         # 앞 방향으로 쪼갬 (최근 줄부터 기준)
     transformed = [transform_to_symmetry(p) for p in partial if transform_to_symmetry(p)]
 
     for i in range(block_size, len(pattern_list)):
-        candidate_block = pattern_list[i:i + block_size][::-1]  # 비교 대상도 같은 방향으로
-        candidate_partial = candidate_block[:block_size - 1]
+        candidate = pattern_list[i:i + block_size][::-1]  # 과거 블럭도 뒤에서부터 거꾸로 구성
+        candidate_partial = candidate[:block_size - 1]
         transformed_candidate = [transform_to_symmetry(p) for p in candidate_partial if transform_to_symmetry(p)]
+
         if transformed == transformed_candidate:
-            upper_index = i - 1
-            if upper_index >= 0:
-                return pattern_list[upper_index]
+            return pattern_list[i]  # 블럭의 상단값 (가장 최근줄)
     return "없음"
 
 # 예측 회차 계산
@@ -81,22 +78,23 @@ def predict():
         predict_round = get_predict_round(data)
         pattern_list = [convert_pattern_name(d["start_point"], d["line_count"], d["odd_even"]) for d in data]
 
-        top10 = []
+        front_predictions = []
+        back_predictions = []
+
         for size in range(2, 7):
-            result = predict_by_partial_block(pattern_list, size)
-            top10.append(result)
-        for size in range(2, 7):
-            result = predict_by_reverse_flow(pattern_list, size)
-            top10.append(result)
+            front_predictions.append(predict_by_partial_block(pattern_list, size))
+            back_predictions.append(predict_by_reverse_flow(pattern_list, size))
 
         return jsonify({
             "predict_round": predict_round,
-            "top10_predictions": top10
+            "front_predictions": front_predictions,
+            "back_predictions": back_predictions
         })
     except Exception as e:
         return jsonify({
             "predict_round": -1,
-            "top10_predictions": ["에러"] * 10
+            "front_predictions": ["에러"] * 5,
+            "back_predictions": ["에러"] * 5
         }), 500
 
 if __name__ == "__main__":
