@@ -33,33 +33,32 @@ def transform_to_symmetry(pattern):
         odd_even_map.get(odd_even, "")
     )
 
-# 패턴 블럭 예측 함수
-# 기준: pattern_list (최신 기준 순서), 기준 위치: 앞 or 뒤 구분
-
+# 블럭 예측 함수 (front/back 분리)
 def predict_block_patterns(pattern_list, position="front"):
     predictions = []
     data_length = len(pattern_list)
 
     for block_size in range(2, 7):
-        for i in range(data_length - block_size):
-            # 최신 블럭 구성 방식
-            if position == "front":
-                base_block = pattern_list[-(i + block_size):-i if i != 0 else None]
-            else:  # back 기준이면 뒤에서부터 i번째 블럭
-                base_block = pattern_list[-(i + block_size):-i if i != 0 else None]
+        # 최신 블럭 구성
+        if position == "front":
+            base_block = pattern_list[-block_size:]
+        elif position == "back":
+            base_block = pattern_list[-(block_size + 2):-2]  # 약간 다른 위치에서 추출
+        else:
+            continue
 
-            base_block = base_block[:block_size * 2 // 3]  # 3분의2
-            transformed = [transform_to_symmetry(p) for p in base_block]
+        compare_block = base_block[:block_size * 2 // 3]
+        transformed = [transform_to_symmetry(p) for p in compare_block]
 
-            if None in transformed or len(transformed) < 1:
-                continue
+        if None in transformed or len(transformed) < 1:
+            continue
 
-            # 전체에서 매칭 찾기
-            for j in range(data_length - len(transformed)):
-                candidate = pattern_list[j:j + len(transformed)]
-                if candidate == transformed:
-                    if j > 0:
-                        predictions.append(pattern_list[j - 1])  # 상단값 수집
+        # 과거 블럭과 비교
+        for j in range(data_length - len(transformed)):
+            candidate = pattern_list[j:j + len(transformed)]
+            if candidate == transformed:
+                if j > 0:
+                    predictions.append(pattern_list[j - 1])
 
     return [p for p in predictions if p]
 
@@ -72,9 +71,8 @@ def predict():
         pattern_list = [
             convert_pattern_name(item["start_point"], item["line_count"], item["odd_even"])
             for item in data
-        ][::-1]  # 최신이 마지막으로 오게
+        ][::-1]  # 최신이 마지막
 
-        # 예측 블럭 분석
         front = predict_block_patterns(pattern_list, position="front")
         back = predict_block_patterns(pattern_list, position="back")
 
