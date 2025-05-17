@@ -9,11 +9,9 @@ CORS(app)
 BLOCK_SIZES = [2, 3]
 
 KOR_MAP = {
-    "L": "좌",
-    "R": "우",
+    "L": "좌", "R": "우",
     "1": "1", "2": "2", "3": "3", "4": "4",
-    "ODD": "홀",
-    "EVEN": "짝"
+    "ODD": "홀", "EVEN": "짝"
 }
 
 def to_korean(code):
@@ -38,75 +36,58 @@ def make_forward_blocks(data):
         if len(data) >= size:
             segment = data[-size:]
             block = tuple([encode(row) for row in segment])
-            blocks.append((block, size))
+            blocks.append(block)
     return blocks
 
-def make_reverse_blocks(data):
+def make_backward_blocks(data):
     blocks = []
     for size in BLOCK_SIZES:
         if len(data) >= size:
-            segment = data[-size:]
-            block = tuple([encode(row)[-2:] for row in segment])
-            blocks.append((block, size))
+            segment = data[:size]
+            block = tuple([encode(row) for row in segment[::-1]])
+            blocks.append(block)
     return blocks
 
-def find_matches(all_data, target_block, size, mode="forward"):
-    matches = []
-    for i in range(len(all_data) - size):
-        segment = all_data[i:i+size]
-        if mode == "forward":
-            block = tuple([encode(row) for row in segment])
-        else:
-            block = tuple([encode(row)[-2:] for row in segment])
+def find_predictions(data, blocks):
+    candidates = []
+    for i in range(len(data)):
+        for size in BLOCK_SIZES:
+            if i + size < len(data):
+                segment = tuple([encode(row) for row in data[i:i+size]])
+                if segment in blocks:
+                    candidates.append(encode(data[i-1]))
+    return candidates
 
-        if block == target_block and i > 0:
-            matches.append(encode(all_data[i - 1]))
-    return matches
-
-def get_top(predictions, count=5):
-    freq = Counter(predictions)
-    sorted_items = freq.most_common()
-    result = []
-    seen = set()
-    for val, _ in sorted_items:
-        if val not in seen:
-            result.append(val)
-            seen.add(val)
-        if len(result) == count:
-            break
-    return result
+def get_top(predictions, direction):
+    counter = Counter(predictions)
+    print(f"[{direction}] 전체 예측 후보 수: {len(predictions)}")
+    for key, value in counter.most_common():
+        print(f"[{direction}] 후보: {key} ➝ {value}회")
+    top = [to_korean(pred[0]) + to_korean(pred[1]) + to_korean(pred[2]) for pred, _ in counter.most_common(5)]
+    print(f"[{direction}] 최종 예측 Top: {top}")
+    return top
 
 @app.route("/predict")
 def predict():
-    all_data = fetch_data()
-    if not all_data or len(all_data) < 10:
-        return jsonify({"오류": "데이터 부족"})
+    raw_data = fetch_data()
+    if not raw_data:
+        return jsonify({"예측회차": None, "앞방향_예측값": [], "뒤방향_예측값": []})
 
-    recent_data = all_data[-288:]
+    data = raw_data[-288:]
+    forward_blocks = make_forward_blocks(data)
+    backward_blocks = make_backward_blocks(data[::-1])
 
-    front_predictions = []
-    front_blocks = make_forward_blocks(recent_data)
-    for block, size in front_blocks:
-        matches = find_matches(all_data, block, size, mode="forward")
-        print(f"[앞] 블럭 {block} → 매칭 수: {len(matches)}")
-        front_predictions.extend(matches)
+    forward_preds = find_predictions(data, forward_blocks)
+    backward_preds = find_predictions(data[::-1], backward_blocks)
 
-    back_predictions = []
-    back_blocks = make_reverse_blocks(recent_data)
-    for block, size in back_blocks:
-        matches = find_matches(all_data, block, size, mode="reverse")
-        print(f"[뒤] 블럭 {block} → 매칭 수: {len(matches)}")
-        back_predictions.extend(matches)
+    top_forward = get_top(forward_preds, "앞")
+    top_backward = get_top(backward_preds, "뒤")
 
-    print("🔎 [앞] 전체 예측 후보 수:", len(front_predictions))
-    print("🔎 [뒤] 전체 예측 후보 수:", len(back_predictions))
-
-    round_number = int(all_data[0]["date_round"]) + 1
-
+    round_number = 100 + len(raw_data)  # 예시 기준 회차
     return jsonify({
         "예측회차": round_number,
-        "앞방향_예측값": [to_korean(v) for v in get_top(front_predictions, 5)],
-        "뒤방향_예측값": [to_korean(v) for v in get_top(back_predictions, 5)]
+        "앞방향_예측값": top_forward,
+        "뒤방향_예측값": top_backward
     })
 
 if __name__ == '__main__':
