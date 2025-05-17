@@ -33,24 +33,36 @@ def transform_to_symmetry(pattern):
         odd_even_map.get(odd_even, "")
     )
 
-# 블럭 예측 함수 (테스트: front/back 동일 로직)
-def predict_block_patterns(pattern_list):
+# 블럭 예측 함수 (front/back 분리)
+def predict_block_patterns(pattern_list, position="front"):
     predictions = []
     data_length = len(pattern_list)
 
     for block_size in range(2, 7):
-        base_block = pattern_list[-block_size:]
+        if position == "front":
+            base_block = pattern_list[-block_size:]
+        elif position == "back":
+            base_block = pattern_list[-(block_size + 2):-2]
+        else:
+            continue
+
         compare_block = base_block[:block_size * 2 // 3]
         transformed = [transform_to_symmetry(p) for p in compare_block]
+
+        print(f"[DEBUG] position={position} block_size={block_size} base_block={base_block}")
+        print(f"[DEBUG] transformed={transformed}")
 
         if None in transformed or len(transformed) < 1:
             continue
 
+        matched = False
         for j in range(data_length - len(transformed)):
             candidate = pattern_list[j:j + len(transformed)]
             if candidate == transformed:
+                matched = True
                 if j > 0:
                     predictions.append(pattern_list[j - 1])
+        print(f"[DEBUG] matched={matched} total_predictions={len(predictions)}")
 
     return [p for p in predictions if p]
 
@@ -63,13 +75,16 @@ def predict():
         pattern_list = [
             convert_pattern_name(item["start_point"], item["line_count"], item["odd_even"])
             for item in data
-        ][::-1]  # 최신이 마지막
+        ][::-1]
 
-        front = predict_block_patterns(pattern_list)
-        back = predict_block_patterns(pattern_list)  # 테스트: 동일 방식으로 복제
+        front = predict_block_patterns(pattern_list, position="front")
+        back = predict_block_patterns(pattern_list, position="back")
 
         front_top5 = [x[0] for x in Counter(front).most_common(5)]
         back_top5 = [x[0] for x in Counter(back).most_common(5)]
+
+        print(f"[FINAL] front_top5: {front_top5}")
+        print(f"[FINAL] back_top5: {back_top5}")
 
         return jsonify({
             "predict_round": len(pattern_list),
