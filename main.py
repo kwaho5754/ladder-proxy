@@ -1,97 +1,41 @@
-from flask import Flask, jsonify
-from flask_cors import CORS
-import requests
-from collections import Counter
+from flask import Flask, jsonify, render_template
+import pandas as pd
 
 app = Flask(__name__)
-CORS(app)
 
-DATA_URL = "https://ntry.com/data/json/games/power_ladder/recent_result.json"
+# 대칭 변환 함수
+def transform(block):
+    table = str.maketrans('좌우삼사홀짝', '우좌사삼짝홀')
+    return [b.translate(table) for b in block]
 
-def convert_pattern_name(start, line, odd_even):
-    direction = "좌" if start == "LEFT" else "우"
-    line_map = {"3": "삼", "4": "사"}
-    odd_even_map = {"ODD": "홀", "EVEN": "짝"}
-    return f"{direction}{line_map.get(line, '')}{odd_even_map.get(odd_even, '')}"
+@app.route('/')
+def index():
+    return render_template('predictor_for_github_final.html')
 
-def transform_to_symmetry(pattern):
-    if not pattern or len(pattern) < 3:
-        return None
-    direction = pattern[0]
-    line = pattern[1]
-    odd_even = pattern[2:]
-
-    direction_map = {"좌": "우", "우": "좌"}
-    line_map = {"삼": "사", "사": "삼"}
-    odd_even_map = {"홀": "짝", "짝": "홀"}
-
-    return (
-        direction_map.get(direction, "") +
-        line_map.get(line, "") +
-        odd_even_map.get(odd_even, "")
-    )
-
-def predict_block_patterns(pattern_list, position="front"):
-    predictions = []
-    data_length = len(pattern_list)
-
-    for block_size in range(2, 6):  # 블럭 길이 2~5까지만
-        if position == "front":
-            base_block = pattern_list[-block_size:]
-        elif position == "back":
-            base_block = pattern_list[-(block_size + 2):-2]
-        else:
-            continue
-
-        compare_block = base_block[:block_size * 2 // 3]
-        transformed = [transform_to_symmetry(p) for p in compare_block]
-
-        print(f"[DEBUG] position={position} block_size={block_size} base_block={base_block}")
-        print(f"[DEBUG] transformed={transformed}")
-
-        if None in transformed or len(transformed) < 1:
-            continue
-
-        matched = False
-        for j in range(data_length - len(transformed)):
-            candidate = pattern_list[j:j + len(transformed)]
-            if candidate == transformed:
-                matched = True
-                if j > 0:
-                    predictions.append(pattern_list[j - 1])
-        print(f"[DEBUG] matched={matched} total_predictions={len(predictions)}")
-
-    return [p for p in predictions if p]
-
-@app.route("/predict", methods=["GET"])
+@app.route('/predict')
 def predict():
-    try:
-        response = requests.get(DATA_URL)
-        data = response.json()
+    df = pd.read_csv('ladder_results.csv')
+    results = df['result'].tolist()
 
-        pattern_list = [
-            convert_pattern_name(item["start_point"], item["line_count"], item["odd_even"])
-            for item in data
-        ][::-1]
+    if len(results) < 3:
+        return jsonify({'predict_round': len(results), 'front_predictions': [], 'back_predictions': []})
 
-        front = predict_block_patterns(pattern_list, position="front")
-        back = predict_block_patterns(pattern_list, position="back")
+    pattern_list = results[:-1]  # 마지막 줄 제외
+    current_block = results[-3:-1]  # 최근 2줄 기준 블럭
+    transformed = transform(current_block)
 
-        front_top5 = [x[0] for x in Counter(front).most_common(5)]
-        back_top5 = [x[0] for x in Counter(back).most_common(5)]
+    # 과거에서 블럭 찾기
+    prediction = None
+    for i in range(len(pattern_list) - 2):
+        if pattern_list[i:i+2] == transformed:
+            prediction = pattern_list[i+2]  # 그 다음 줄
+            break
 
-        print(f"[FINAL] front_top5: {front_top5}")
-        print(f"[FINAL] back_top5: {back_top5}")
+    return jsonify({
+        'predict_round': len(results),
+        'front_predictions': [prediction] if prediction else [],
+        'back_predictions': []  # 뒤 기준은 안씀
+    })
 
-        return jsonify({
-            "predict_round": len(pattern_list),
-            "front_predictions": front_top5,
-            "back_predictions": back_top5
-        })
-
-    except Exception as e:
-        print("[예측 오류]", str(e))
-        return jsonify({"error": str(e)}), 500
-
-if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=5000)
+if __name__ == '__main__':
+    app.run(debug=True)
