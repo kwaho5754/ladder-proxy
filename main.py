@@ -20,35 +20,37 @@ def transform_to_symmetry(pattern):
         return None
     direction = pattern[0]
     line = pattern[1]
-    oe = pattern[2:]
-    # 좌/우를 3/4로 대응하고 홀/짝 유지
+    # 좌 → 4 / 우 → 3
     line_mirror = "4" if direction == "좌" else "3"
-    oe_mirror = "짝" if line == "3" else "홀"  # 줄수 기준 반전 (예외적 로직)
+    oe_mirror = "짝" if line == "3" else "홀"  # 삼이면 짝, 사면 홀
     return line_mirror + oe_mirror
 
-# 블럭 기반 예측 (상단 블럭 사용)
-def predict_top_by_block(pattern_list, block_size):
+# 블럭 기반 예측 함수
+def predict_by_partial_block(pattern_list, block_size, reverse=False):
     if len(pattern_list) < block_size:
         return "없음"
-    recent_block = pattern_list[:block_size]
-    recent_partial = recent_block[:block_size - 1]  # 3분의2
-    transformed = [transform_to_symmetry(p) for p in recent_partial if transform_to_symmetry(p)]
+    block = pattern_list[:block_size]
+    if reverse:
+        partial = block[-(block_size - 1):]  # 뒤 3분의 2
+    else:
+        partial = block[:block_size - 1]     # 앞 3분의 2
+
+    transformed = [transform_to_symmetry(p) for p in partial if transform_to_symmetry(p)]
 
     for i in range(block_size, len(pattern_list)):
         candidate_block = pattern_list[i:i + block_size]
         if len(candidate_block) < block_size:
             continue
-        candidate_partial = candidate_block[:block_size - 1]
+        if reverse:
+            candidate_partial = candidate_block[-(block_size - 1):]
+        else:
+            candidate_partial = candidate_block[:block_size - 1]
         transformed_candidate = [transform_to_symmetry(p) for p in candidate_partial if transform_to_symmetry(p)]
         if transformed == transformed_candidate:
             upper_index = i - 1
             if upper_index >= 0:
                 return pattern_list[upper_index]
     return "없음"
-
-# 균형 조합 기반은 블럭 2줄 기준 사용
-def predict_combo_by_2block(pattern_list):
-    return predict_top_by_block(pattern_list, block_size=2)
 
 # 예측 회차 계산
 def get_predict_round(data):
@@ -69,15 +71,19 @@ def predict():
         predict_round = get_predict_round(data)
         pattern_list = [convert_pattern_name(d["start_point"], d["line_count"], d["odd_even"]) for d in data]
 
-        top1 = predict_top_by_block(pattern_list, 3)
-        top2 = predict_top_by_block(pattern_list, 4)
-        top3 = predict_top_by_block(pattern_list, 5)
-        combo = predict_combo_by_2block(pattern_list)
+        top10 = []
+        # 앞 기준 (Top1~5)
+        for size in range(2, 7):
+            result = predict_by_partial_block(pattern_list, size, reverse=False)
+            top10.append(result)
+        # 뒤 기준 (Top6~10)
+        for size in range(2, 7):
+            result = predict_by_partial_block(pattern_list, size, reverse=True)
+            top10.append(result)
 
         return jsonify({
             "predict_round": predict_round,
-            "top3_patterns": [top1, top2, top3],
-            "combo_suggestion": combo
+            "top10_predictions": top10
         })
     except Exception as e:
         return str(e), 500
