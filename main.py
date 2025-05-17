@@ -6,13 +6,17 @@ from collections import Counter
 app = Flask(__name__)
 CORS(app)
 
-BLOCK_SIZES = [2, 3]  # 앞 기준: 2~3줄 블럭만 사용
+BLOCK_SIZES = [2, 3]  # 오직 2줄, 3줄 블럭만 사용
 
-# 한글 변환 테이블
 KOR_MAP = {
-    "L": "좌", "R": "우",
-    "1": "1", "2": "2", "3": "3", "4": "4",
-    "ODD": "홀", "EVEN": "짝"
+    "L": "좌",
+    "R": "우",
+    "1": "1",
+    "2": "2",
+    "3": "3",
+    "4": "4",
+    "ODD": "홀",
+    "EVEN": "짝",
 }
 
 def to_korean(code):
@@ -35,38 +39,46 @@ def make_forward_blocks(data):
     blocks = []
     for size in BLOCK_SIZES:
         if len(data) >= size:
-            segment = data[-size:]
+            segment = data[-size:]  # 최신 줄부터 size만큼
             block = tuple(encode(row) for row in segment)
             blocks.append(block)
     return blocks
 
-def extract_forward_candidates(data, blocks):
-    counter = Counter()
-    for size in BLOCK_SIZES:
-        for i in range(len(data) - size):
-            segment = tuple(encode(row) for row in data[i:i + size])
-            if segment in blocks:
-                next_row = data[i + size]
-                code = encode(next_row)
-                counter[code] += 1
-    return counter
+def find_forward_matches(data, target_blocks):
+    matches = []
+    for i in range(len(data)):
+        for size in BLOCK_SIZES:
+            if i + size >= len(data):
+                continue
+            segment = data[i:i+size]
+            block = tuple(encode(row) for row in segment)
+            if block in target_blocks:
+                next_index = i + size
+                if next_index < len(data):
+                    matches.append(encode(data[next_index]))
+    return matches
 
-@app.route('/predict')
+@app.route("/predict")
 def predict():
     data = fetch_data()
-    if not data:
-        return jsonify({"error": "No data"})
+    if not data or len(data) < max(BLOCK_SIZES) + 1:
+        return jsonify({"error": "Not enough data"})
 
-    recent_data = data[-288:]
-    forward_blocks = make_forward_blocks(recent_data)
-    forward_freq = extract_forward_candidates(recent_data, forward_blocks)
+    # 블럭 생성 및 매칭
+    target_blocks = make_forward_blocks(data)
+    forward_matches = find_forward_matches(data, target_blocks)
 
-    top_forward = [to_korean(code) for code, _ in forward_freq.most_common(5)]
+    # 빈도수 집계 및 Top 5
+    forward_counter = Counter(forward_matches)
+    top5_forward = [to_korean(code) for code, _ in forward_counter.most_common(5)]
+
+    # 회차 정보 추출
+    last_round = data[-1].get("round") if data else "-"
 
     return jsonify({
-        "예측회차": len(data),
-        "앞기준_예측값": top_forward
+        "앞기준_예측값": top5_forward,
+        "예측회차": last_round
     })
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5000)
