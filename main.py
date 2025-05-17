@@ -8,44 +8,51 @@ CORS(app)
 
 DATA_URL = "https://ntry.com/data/json/games/power_ladder/recent_result.json"
 
-# 패턴 변환: start, line, odd_even → 예: 좌3홀
+# 패턴 변환: 예) LEFT, 3, ODD → 좌삼홀
 def convert_pattern_name(start, line, odd_even):
     direction = "좌" if start == "LEFT" else "우"
     line_map = {"3": "삼", "4": "사"}
     odd_even_map = {"ODD": "홀", "EVEN": "짝"}
     return f"{direction}{line_map.get(line, '')}{odd_even_map.get(odd_even, '')}"
 
-# 대칭 변환: 좌삼홀 ↔ 우사짝
+# 좌삼홀 → 우사짝 같은 대칭 변환
 def transform_to_symmetry(pattern):
     if len(pattern) != 4:
         return None
+    direction = pattern[0]           # 좌 / 우
+    line = pattern[1]                # 3 / 4
+    odd_even = pattern[2:]          # 홀 / 짝
+
     direction_map = {"좌": "우", "우": "좌"}
-    line_map = {"삼": "사", "사": "삼"}
+    line_map = {"3": "4", "4": "3"}
     odd_even_map = {"홀": "짝", "짝": "홀"}
+
     return (
-        direction_map.get(pattern[0], "") +
-        line_map.get(pattern[1], "") +
-        odd_even_map.get(pattern[2:], "")
+        direction_map.get(direction, "") +
+        line_map.get(line, "") +
+        odd_even_map.get(odd_even, "")
     )
 
-# 블럭 예측 함수
+# 블럭 기반 예측 로직
 def predict_block_patterns(pattern_list, reverse=False):
     predictions = []
-    for block_size in range(2, 7):  # 블럭 크기: 2~6
+    for block_size in range(2, 7):  # 블럭 사이즈: 2~6줄
         for i in range(len(pattern_list) - block_size):
             block = pattern_list[i:i + block_size]
             two_thirds_len = max(1, block_size * 2 // 3)
             base = block[:two_thirds_len]
             transformed = [transform_to_symmetry(p) for p in base]
 
-            # 찾을 기준 패턴: 정방향이면 그대로, 역방향이면 반전
+            if None in transformed:
+                continue
+
             search_pattern = transformed if not reverse else transformed[::-1]
 
-            for j in range(len(pattern_list) - block_size):
+            for j in range(len(pattern_list) - two_thirds_len):
                 candidate = pattern_list[j:j + two_thirds_len]
                 if candidate == search_pattern:
                     if j > 0:
-                        predictions.append(pattern_list[j - 1])  # 항상 상단 값
+                        predictions.append(pattern_list[j - 1])  # 항상 상단(이전 줄)
     return [p for p in predictions if p]
 
 @app.route("/predict", methods=["GET"])
@@ -53,16 +60,15 @@ def predict():
     try:
         response = requests.get(DATA_URL)
         data = response.json()
+
         pattern_list = [
             convert_pattern_name(item["start"], item["line"], item["odd_even"])
             for item in data
-        ][::-1]  # 최신값이 뒤로 오도록
+        ][::-1]  # 최신이 뒤로 오게 뒤집음
 
-        # 앞/뒤 기준 예측값 추출
         front = predict_block_patterns(pattern_list, reverse=False)
         back = predict_block_patterns(pattern_list, reverse=True)
 
-        # 빈도 상위 5개씩 추출
         front_top5 = [x[0] for x in Counter(front).most_common(5)]
         back_top5 = [x[0] for x in Counter(back).most_common(5)]
 
