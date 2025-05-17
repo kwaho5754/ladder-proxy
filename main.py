@@ -47,7 +47,6 @@ def make_reverse_blocks(data):
     for size in BLOCK_SIZES:
         if len(data) >= size:
             segment = data[-size:]
-            # 역방향 분석이므로 뒷글자 2개를 기준으로 블럭 구성한다고 가정
             block = tuple([encode(row)[-2:] for row in segment])
             blocks.append((block, size))
     return blocks
@@ -58,16 +57,24 @@ def find_matches(all_data, target_block, size, mode="forward"):
         segment = all_data[i:i+size]
         if mode == "forward":
             block = tuple([encode(row) for row in segment])
-        else:  # reverse
+        else:
             block = tuple([encode(row)[-2:] for row in segment])
 
         if block == target_block and i > 0:
-            matches.append(encode(all_data[i - 1]))  # 바로 윗줄 결과
+            matches.append(encode(all_data[i - 1]))
     return matches
 
-def get_top(predictions, all_data, count=5):
+def get_top(predictions, count=5):
     freq = Counter(predictions)
-    result = [val for val, _ in freq.most_common(count)]
+    sorted_items = freq.most_common()
+    result = []
+    seen = set()
+    for val, _ in sorted_items:
+        if val not in seen:
+            result.append(val)
+            seen.add(val)
+        if len(result) == count:
+            break
     return result
 
 @app.route("/predict")
@@ -78,19 +85,17 @@ def predict():
 
     recent_data = all_data[-288:]
 
-    # ✅ 앞 블럭 분석 (정방향)
     front_predictions = []
     front_blocks = make_forward_blocks(recent_data)
     for block, size in front_blocks:
         front_predictions.extend(find_matches(all_data, block, size, mode="forward"))
-    front_top5 = get_top(front_predictions, all_data, count=5)
+    front_top5 = get_top(front_predictions, count=5)
 
-    # ✅ 뒤 블럭 분석 (역방향)
     back_predictions = []
     back_blocks = make_reverse_blocks(recent_data)
     for block, size in back_blocks:
         back_predictions.extend(find_matches(all_data, block, size, mode="reverse"))
-    back_top5 = get_top(back_predictions, all_data, count=5)
+    back_top5 = get_top(back_predictions, count=5)
 
     round_number = int(all_data[0]["date_round"]) + 1
 
