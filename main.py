@@ -1,57 +1,38 @@
-import pandas as pd
+from flask import Flask, jsonify
 from collections import Counter
-from flask import Flask, jsonify, request
-import os
+import requests
 
 app = Flask(__name__)
-
-CSV_PATH = "ladder_results.csv"
-
-
-def load_recent_data(n=288):
-    df = pd.read_csv(CSV_PATH)
-    if len(df) < n:
-        return df
-    return df.tail(n)
-
-
-def extract_target_column(df):
-    if "result" in df.columns:
-        return df["result"].tolist()
-    return []
-
-
-def get_top_predictions(target_list, top_n=10):
-    counter = Counter(target_list)
-    most_common = counter.most_common(top_n)
-    results = [item[0] for item in most_common]
-    # 예측값이 부족할 경우 "없음"으로 채우기
-    while len(results) < top_n:
-        results.append("없음")
-    return results
-
 
 @app.route("/predict")
 def predict():
     try:
-        df = load_recent_data()
-        targets = extract_target_column(df)
-        predictions = get_top_predictions(targets, 10)
+        # JSON 데이터 요청 (최근 288개 결과)
+        url = "https://ntry.com/data/json/games/power_ladder/recent_result.json"
+        res = requests.get(url)
+        data = res.json()
 
-        return jsonify({
-            "predict_round": len(df),
-            "front_predictions": predictions[:5],
-            "back_predictions": predictions[5:],
-        })
+        # 결과값만 추출
+        results = [item['result'] for item in data['rows'] if 'result' in item]
+
+        # 예측값 빈도 수 세기
+        count = Counter(results)
+        top_10 = [item[0] for item in count.most_common(10)]
+
+        response = {
+            "front_predictions": top_10[:5],
+            "back_predictions": top_10[5:],
+            "predict_round": len(results)
+        }
+        return jsonify(response)
+
     except Exception as e:
+        print("[ERROR]", str(e))
         return jsonify({
-            "error": str(e),
-            "predict_round": 0,
             "front_predictions": [],
             "back_predictions": [],
+            "predict_round": 0
         })
 
-
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(debug=True, host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=8080, debug=True)
