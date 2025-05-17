@@ -20,9 +20,8 @@ def transform_to_symmetry(pattern):
         return None
     direction = pattern[0]
     line = pattern[1]
-    # 좌 → 4 / 우 → 3
     line_mirror = "4" if direction == "좌" else "3"
-    oe_mirror = "짝" if line == "3" else "홀"  # 삼이면 짝, 사면 홀
+    oe_mirror = "짝" if line == "3" else "홀"
     return line_mirror + oe_mirror
 
 # 블럭 기반 예측 함수
@@ -31,9 +30,9 @@ def predict_by_partial_block(pattern_list, block_size, reverse=False):
         return "없음"
     block = pattern_list[:block_size]
     if reverse:
-        partial = block[-(block_size - 1):]  # 뒤 3분의 2
+        partial = block[-(block_size - 1):]
     else:
-        partial = block[:block_size - 1]     # 앞 3분의 2
+        partial = block[:block_size - 1]
 
     transformed = [transform_to_symmetry(p) for p in partial if transform_to_symmetry(p)]
 
@@ -66,17 +65,15 @@ def predict():
         response = requests.get(DATA_URL)
         data = response.json()
         if not data or len(data) < 10:
-            return "데이터 부족"
+            raise ValueError("데이터 부족")
 
         predict_round = get_predict_round(data)
         pattern_list = [convert_pattern_name(d["start_point"], d["line_count"], d["odd_even"]) for d in data]
 
         top10 = []
-        # 앞 기준 (Top1~5)
         for size in range(2, 7):
             result = predict_by_partial_block(pattern_list, size, reverse=False)
             top10.append(result)
-        # 뒤 기준 (Top6~10)
         for size in range(2, 7):
             result = predict_by_partial_block(pattern_list, size, reverse=True)
             top10.append(result)
@@ -86,7 +83,10 @@ def predict():
             "top10_predictions": top10
         })
     except Exception as e:
-        return str(e), 500
+        return jsonify({
+            "predict_round": -1,
+            "top10_predictions": ["에러"] * 10
+        }), 500
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
