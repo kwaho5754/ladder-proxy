@@ -24,31 +24,42 @@ def transform_to_symmetry(pattern):
     oe_mirror = "짝" if line == "3" else "홀"
     return line_mirror + oe_mirror
 
-# 블럭 기반 예측 함수
-def predict_by_partial_block(pattern_list, block_size, reverse=False):
+# 정방향 예측 함수 (앞 3분의2)
+def predict_by_partial_block(pattern_list, block_size):
     if len(pattern_list) < block_size:
         return "없음"
     block = pattern_list[:block_size]
-    if reverse:
-        partial = block[-(block_size - 1):]
-    else:
-        partial = block[:block_size - 1]
-
+    partial = block[:block_size - 1]
     transformed = [transform_to_symmetry(p) for p in partial if transform_to_symmetry(p)]
 
     for i in range(block_size, len(pattern_list)):
         candidate_block = pattern_list[i:i + block_size]
         if len(candidate_block) < block_size:
             continue
-        if reverse:
-            candidate_partial = candidate_block[-(block_size - 1):]
-        else:
-            candidate_partial = candidate_block[:block_size - 1]
+        candidate_partial = candidate_block[:block_size - 1]
         transformed_candidate = [transform_to_symmetry(p) for p in candidate_partial if transform_to_symmetry(p)]
         if transformed == transformed_candidate:
             upper_index = i - 1
             if upper_index >= 0:
                 return pattern_list[upper_index]
+    return "없음"
+
+# 역방향 예측 함수 (최근 블럭을 기준으로 하단을 보는 방식)
+def predict_by_reverse_flow(pattern_list, block_size):
+    if len(pattern_list) < block_size:
+        return "없음"
+    block = pattern_list[:block_size]
+    partial = block[-(block_size - 1):]
+    transformed = [transform_to_symmetry(p) for p in partial if transform_to_symmetry(p)]
+
+    for i in range(len(pattern_list) - block_size):
+        candidate_block = pattern_list[i:i + block_size]
+        candidate_partial = candidate_block[-(block_size - 1):]
+        transformed_candidate = [transform_to_symmetry(p) for p in candidate_partial if transform_to_symmetry(p)]
+        if transformed == transformed_candidate:
+            lower_index = i + block_size
+            if lower_index < len(pattern_list):
+                return pattern_list[lower_index]
     return "없음"
 
 # 예측 회차 계산
@@ -72,10 +83,10 @@ def predict():
 
         top10 = []
         for size in range(2, 7):
-            result = predict_by_partial_block(pattern_list, size, reverse=False)
+            result = predict_by_partial_block(pattern_list, size)
             top10.append(result)
         for size in range(2, 7):
-            result = predict_by_partial_block(pattern_list, size, reverse=True)
+            result = predict_by_reverse_flow(pattern_list, size)
             top10.append(result)
 
         return jsonify({
