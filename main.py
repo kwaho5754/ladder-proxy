@@ -1,71 +1,39 @@
+from flask import Flask, jsonify
 import requests
 from collections import Counter
-from flask import Flask, jsonify
 
 app = Flask(__name__)
 
-URL = "https://ntry.com/data/json/games/power_ladder/recent_result.json"
+# 예측 로직 (단순 빈도 기반)
+def fetch_and_predict():
+    url = "https://ntry.com/data/json/games/power_ladder/recent_result.json"
+    response = requests.get(url)
+    if response.status_code != 200:
+        return [], [], None
 
-# 변환 함수 (좌/우 + 줄수 + 홀짝 조합)
-def transform_result(row):
-    return f"{row['start_point']}{row['line_count']}{row['odd_even']}", row['date_round']
-
-def get_recent_data():
     try:
-        response = requests.get(URL)
-        response.raise_for_status()
-        raw_data = response.json()
-        transformed = [transform_result(row) for row in raw_data]
-        return transformed[:288]  # 최근 288개 고정
-    except Exception as e:
-        print(f"[ERROR] Failed to load or transform data: {e}")
-        return []
-
-def block_match(data, direction):
-    predictions = []
-    seen_blocks = {}
-    base_sizes = range(2, 7)  # 블럭 크기: 2줄 ~ 6줄
-
-    if direction == "front":
-        for block_size in base_sizes:
-            base_block = [pattern for pattern, _ in data[-block_size:]]
-            for i in range(len(data) - block_size):
-                comp_block = [pattern for pattern, _ in data[i:i+block_size]]
-                if base_block == comp_block:
-                    next_index = i + block_size  # 다음 줄
-                    if next_index < len(data):
-                        candidate = data[next_index][0]
-                        seen_blocks[data[i][1]] = candidate
-
-    elif direction == "back":
-        for block_size in base_sizes:
-            base_block = [pattern for pattern, _ in data[:block_size]]
-            for i in range(block_size, len(data)):
-                comp_block = [pattern for pattern, _ in data[i-block_size:i]]
-                if base_block == comp_block:
-                    prev_index = i - block_size - 1  # 이전 줄
-                    if prev_index >= 0:
-                        candidate = data[prev_index][0]
-                        seen_blocks[data[i-block_size][1]] = candidate
-
-    sorted_preds = sorted(seen_blocks.items(), key=lambda x: -int(x[0]))
-    return [v for _, v in sorted_preds[:5]]  # 최근 순서로 최대 5개
+        data = response.json()
+        # 변환: LEFT/RIGHT + 홀/짝 조합
+        combined = [d["start_point"].upper() + d["line_count"] + d["odd_even"] for d in data]
+        # 가장 많이 나온 상위 10개 조합 추출
+        freq = Counter(combined).most_common(10)
+        top10 = [v[0] for v in freq]
+        # 앞 기준, 뒤 기준 5개씩 분리
+        front_top5 = top10[:5]
+        back_top5 = top10[5:]
+        predict_round = data[0]["date_round"] + 1 if data else None
+        return front_top5, back_top5, predict_round
+    except Exception:
+        return [], [], None
 
 @app.route("/predict")
 def predict():
-    data = get_recent_data()
-    if not data:
-        return jsonify({"error": "데이터 없음", "front_predictions": [], "back_predictions": [], "predict_round": None})
-
-    front_predictions = block_match(data, "front")
-    back_predictions = block_match(data, "back")
-    round_num = data[-1][1] if data else None
-
+    front_predictions, back_predictions, predict_round = fetch_and_predict()
     return jsonify({
-        "front_predictions": front_predictions,
-        "back_predictions": back_predictions,
-        "predict_round": round_num
+        "front_top5": front_predictions,
+        "back_top5": back_predictions,
+        "predict_round": predict_round
     })
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000, host="0.0.0.0")
+    app.run(debug=True, host="0.0.0.0", port=5000)
