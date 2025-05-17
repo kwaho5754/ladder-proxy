@@ -44,17 +44,17 @@ def predict_by_partial_block(pattern_list, block_size):
                 return pattern_list[upper_index]
     return "없음"
 
-# 역방향 예측 함수 (뒤 3분의2 기준이지만 상단 반환)
+# 역방향 예측 함수 (뒤 기준 블럭을 앞 방향으로 대칭)
 def predict_by_reverse_flow(pattern_list, block_size):
     if len(pattern_list) < block_size:
         return "없음"
-    block = pattern_list[:block_size]
-    partial = block[-(block_size - 1):]
+    block = pattern_list[-block_size:][::-1]  # 뒤에서부터 블럭 추출 후 역순
+    partial = block[:block_size - 1]  # 앞에서부터 자름 (이게 실제 흐름의 기준)
     transformed = [transform_to_symmetry(p) for p in partial if transform_to_symmetry(p)]
 
-    for i in range(len(pattern_list) - block_size):
-        candidate_block = pattern_list[i:i + block_size]
-        candidate_partial = candidate_block[-(block_size - 1):]
+    for i in range(block_size, len(pattern_list)):
+        candidate_block = pattern_list[i:i + block_size][::-1]  # 비교 대상도 같은 방향으로
+        candidate_partial = candidate_block[:block_size - 1]
         transformed_candidate = [transform_to_symmetry(p) for p in candidate_partial if transform_to_symmetry(p)]
         if transformed == transformed_candidate:
             upper_index = i - 1
