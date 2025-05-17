@@ -8,7 +8,7 @@ CORS(app)
 
 BLOCK_SIZES = [2, 3, 4, 5, 6]
 
-# 영어 코드 -> 한글 변환 테이블
+# 코드 → 한글 변환 테이블
 KOR_MAP = {
     "L": "좌",
     "R": "우",
@@ -42,33 +42,41 @@ def make_forward_blocks(data):
             blocks.append(block)
     return blocks
 
-def analyze_forward(data):
-    blocks = make_forward_blocks(data)
-    candidates = []
+def predict_forward(data):
+    all_blocks = []
     for size in BLOCK_SIZES:
         for i in range(len(data) - size):
-            window = tuple(encode(row) for row in data[i:i + size])
-            if window in blocks:
-                if i + size < len(data):
-                    candidates.append(encode(data[i + size]))
-    return Counter(candidates)
+            segment = data[i:i+size]
+            block = tuple(encode(row) for row in segment)
+            result = encode(data[i+size])
+            all_blocks.append((block, result))
+    return all_blocks
 
-@app.route("/predict")
+@app.route('/predict', methods=['GET'])
 def predict():
     data = fetch_data()
-    if not data:
-        return jsonify({"error": "데이터 없음"})
+    if not data or len(data) < 10:
+        return jsonify({
+            "앞기준 예측값": [],
+            "예측회차": None
+        })
 
-    예측회차 = data[-1].get("date_round") if data else None
-    분석대상 = data[-288:]  # 항상 최신 288개만 사용
+    current_blocks = make_forward_blocks(data)
+    past_blocks = predict_forward(data)
 
-    forward_counter = analyze_forward(분석대상)
-    forward_top5 = [to_korean(code) for code, _ in forward_counter.most_common(5)]
+    match_counter = Counter()
+    for curr in current_blocks:
+        for past, result in past_blocks:
+            if curr == past:
+                match_counter[result] += 1
 
+    top_forward = [to_korean(code) for code, _ in match_counter.most_common(5)]
+
+    round_number = data[-1]["date_round"] if "date_round" in data[-1] else None
     return jsonify({
-        "앞방향_예측값": forward_top5,
-        "예측회차": 예측회차
+        "앞기준 예측값": top_forward,
+        "예측회차": round_number
     })
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+if __name__ == '__main__':
+    app.run(debug=True, port=5000)
