@@ -33,27 +33,19 @@ def transform_to_symmetry(pattern):
         odd_even_map.get(odd_even, "")
     )
 
-# 블럭 예측 함수 (front/back 분리)
-def predict_block_patterns(pattern_list, position="front"):
+# 블럭 예측 함수 (테스트: front/back 동일 로직)
+def predict_block_patterns(pattern_list):
     predictions = []
     data_length = len(pattern_list)
 
     for block_size in range(2, 7):
-        # 최신 블럭 구성
-        if position == "front":
-            base_block = pattern_list[-block_size:]
-        elif position == "back":
-            base_block = pattern_list[-(block_size + 2):-2]  # 약간 다른 위치에서 추출
-        else:
-            continue
-
+        base_block = pattern_list[-block_size:]
         compare_block = base_block[:block_size * 2 // 3]
         transformed = [transform_to_symmetry(p) for p in compare_block]
 
         if None in transformed or len(transformed) < 1:
             continue
 
-        # 과거 블럭과 비교
         for j in range(data_length - len(transformed)):
             candidate = pattern_list[j:j + len(transformed)]
             if candidate == transformed:
@@ -73,8 +65,8 @@ def predict():
             for item in data
         ][::-1]  # 최신이 마지막
 
-        front = predict_block_patterns(pattern_list, position="front")
-        back = predict_block_patterns(pattern_list, position="back")
+        front = predict_block_patterns(pattern_list)
+        back = predict_block_patterns(pattern_list)  # 테스트: 동일 방식으로 복제
 
         front_top5 = [x[0] for x in Counter(front).most_common(5)]
         back_top5 = [x[0] for x in Counter(back).most_common(5)]
