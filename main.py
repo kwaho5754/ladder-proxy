@@ -35,7 +35,7 @@ def encode(row):
 
 def make_forward_blocks(data):
     blocks = []
-    for size in BLOCK_SIZES:
+    for size in [2, 3]:
         if len(data) >= size:
             segment = data[-size:]
             block = tuple([encode(row) for row in segment])
@@ -44,7 +44,7 @@ def make_forward_blocks(data):
 
 def make_reverse_blocks(data):
     blocks = []
-    for size in BLOCK_SIZES:
+    for size in [2, 3]:
         if len(data) >= size:
             segment = data[-size:]
             block = tuple([encode(row)[-2:] for row in segment])
@@ -88,21 +88,21 @@ def predict():
     front_predictions = []
     front_blocks = make_forward_blocks(recent_data)
     for block, size in front_blocks:
-        front_predictions.extend(find_matches(all_data, block, size, mode="forward"))
-    front_top5 = get_top(front_predictions, count=5)
+        matches = find_matches(all_data, block, size, mode="forward")
+        front_predictions.extend(matches)
 
     back_predictions = []
     back_blocks = make_reverse_blocks(recent_data)
     for block, size in back_blocks:
-        back_predictions.extend(find_matches(all_data, block, size, mode="reverse"))
-    back_top5 = get_top(back_predictions, count=5)
+        matches = find_matches(all_data, block, size, mode="reverse")
+        back_predictions.extend(matches)
 
     round_number = int(all_data[0]["date_round"]) + 1
 
     return jsonify({
         "예측회차": round_number,
-        "앞방향_예측값": [to_korean(v) for v in front_top5],
-        "뒤방향_예측값": [to_korean(v) for v in back_top5]
+        "앞방향_예측값": [to_korean(v) for v in get_top(front_predictions, 5)],
+        "뒤방향_예측값": [to_korean(v) for v in get_top(back_predictions, 5)]
     })
 
 if __name__ == '__main__':
