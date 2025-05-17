@@ -1,8 +1,8 @@
 from flask import Flask, jsonify
-from flask_cors import CORS  # ✅ CORS 추가
+from flask_cors import CORS  # CORS 허용 추가
 
 app = Flask(__name__)
-CORS(app)  # ✅ 모든 출처 허용
+CORS(app)  # 모든 출처 허용
 
 @app.route('/predict')
 def predict():
