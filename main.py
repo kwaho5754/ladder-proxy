@@ -8,14 +8,14 @@ CORS(app)
 
 DATA_URL = "https://ntry.com/data/json/games/power_ladder/recent_result.json"
 
-# 패턴 변환: 예) LEFT, 3, ODD → 좌삼홀
+# 변환 함수: LEFT, 3, ODD → 좌삼홀 등으로
 def convert_pattern_name(start, line, odd_even):
     direction = "좌" if start == "LEFT" else "우"
     line_map = {"3": "삼", "4": "사"}
     odd_even_map = {"ODD": "홀", "EVEN": "짝"}
     return f"{direction}{line_map.get(line, '')}{odd_even_map.get(odd_even, '')}"
 
-# 대칭 변환: 좌삼홀 ↔ 우사짝
+# 대칭 변환 함수: 좌삼홀 → 우사짝 등
 def transform_to_symmetry(pattern):
     if len(pattern) != 4:
         return None
@@ -33,29 +33,33 @@ def transform_to_symmetry(pattern):
         odd_even_map.get(odd_even, "")
     )
 
-# 블럭 기반 예측 함수 (정방향 or 역방향)
-def predict_block_patterns(pattern_list, reverse=False):
+# 패턴 블럭 예측 함수
+# 기준: pattern_list (최신 기준 순서), 기준 위치: 앞 or 뒤 구분
+
+def predict_block_patterns(pattern_list, position="front"):
     predictions = []
+    data_length = len(pattern_list)
 
-    for block_size in range(2, 7):  # 블럭 사이즈 2~6줄
-        for i in range(len(pattern_list) - block_size):
-            block = pattern_list[i:i + block_size]
-            two_thirds_len = max(1, block_size * 2 // 3)
+    for block_size in range(2, 7):
+        for i in range(data_length - block_size):
+            # 최신 블럭 구성 방식
+            if position == "front":
+                base_block = pattern_list[-(i + block_size):-i if i != 0 else None]
+            else:  # back 기준이면 뒤에서부터 i번째 블럭
+                base_block = pattern_list[-(i + block_size):-i if i != 0 else None]
 
-            # 블럭의 앞 3분의 2만 사용해서 대칭 변환
-            base = block[:two_thirds_len]
-            transformed = [transform_to_symmetry(p) for p in base]
+            base_block = base_block[:block_size * 2 // 3]  # 3분의2
+            transformed = [transform_to_symmetry(p) for p in base_block]
 
-            if None in transformed:
+            if None in transformed or len(transformed) < 1:
                 continue
 
-            search_pattern = transformed if not reverse else transformed[::-1]
-
-            for j in range(len(pattern_list) - two_thirds_len):
-                candidate = pattern_list[j:j + two_thirds_len]
-                if candidate == search_pattern:
+            # 전체에서 매칭 찾기
+            for j in range(data_length - len(transformed)):
+                candidate = pattern_list[j:j + len(transformed)]
+                if candidate == transformed:
                     if j > 0:
-                        predictions.append(pattern_list[j - 1])  # 항상 상단값
+                        predictions.append(pattern_list[j - 1])  # 상단값 수집
 
     return [p for p in predictions if p]
 
@@ -68,13 +72,12 @@ def predict():
         pattern_list = [
             convert_pattern_name(item["start_point"], item["line_count"], item["odd_even"])
             for item in data
-        ][::-1]  # 최신이 마지막에 오도록
+        ][::-1]  # 최신이 마지막으로 오게
 
-        # 예측값 수집
-        front = predict_block_patterns(pattern_list, reverse=False)
-        back = predict_block_patterns(pattern_list, reverse=True)
+        # 예측 블럭 분석
+        front = predict_block_patterns(pattern_list, position="front")
+        back = predict_block_patterns(pattern_list, position="back")
 
-        # 상위 5개 예측값 추출
         front_top5 = [x[0] for x in Counter(front).most_common(5)]
         back_top5 = [x[0] for x in Counter(back).most_common(5)]
 
