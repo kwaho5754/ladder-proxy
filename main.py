@@ -24,7 +24,11 @@ def extract_target_column(df):
 def get_top_predictions(target_list, top_n=10):
     counter = Counter(target_list)
     most_common = counter.most_common(top_n)
-    return [item[0] for item in most_common]
+    results = [item[0] for item in most_common]
+    # 예측값이 부족할 경우 "없음"으로 채우기
+    while len(results) < top_n:
+        results.append("없음")
+    return results
 
 
 @app.route("/predict")
