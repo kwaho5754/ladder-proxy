@@ -15,16 +15,17 @@ def convert_pattern_name(start, line, odd_even):
     odd_even_map = {"ODD": "홀", "EVEN": "짝"}
     return f"{direction}{line_map.get(line, '')}{odd_even_map.get(odd_even, '')}"
 
-# 대칭 변환 함수: 좌삼홀 → 우사짝 등
+# 대칭 변환 함수 수정: '우삼홀' 같은 패턴도 처리 가능하게
+
 def transform_to_symmetry(pattern):
-    if len(pattern) != 4:
+    if not pattern or len(pattern) < 3:
         return None
     direction = pattern[0]
     line = pattern[1]
     odd_even = pattern[2:]
 
     direction_map = {"좌": "우", "우": "좌"}
-    line_map = {"3": "4", "4": "3"}
+    line_map = {"삼": "사", "사": "삼"}
     odd_even_map = {"홀": "짝", "짝": "홀"}
 
     return (
@@ -33,7 +34,8 @@ def transform_to_symmetry(pattern):
         odd_even_map.get(odd_even, "")
     )
 
-# 블럭 예측 함수 (front/back 분리)
+# 블럭 예측 함수
+
 def predict_block_patterns(pattern_list, position="front"):
     predictions = []
     data_length = len(pattern_list)
