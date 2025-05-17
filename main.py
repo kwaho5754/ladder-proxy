@@ -6,9 +6,8 @@ from collections import Counter
 app = Flask(__name__)
 CORS(app)
 
-BLOCK_SIZES = [2, 3, 4, 5, 6]
+BLOCK_SIZES = [2, 3]
 
-# 🔤 코드 → 한글 변환 테이블
 KOR_MAP = {
     "L": "좌",
     "R": "우",
@@ -35,7 +34,7 @@ def encode(row):
 
 def make_forward_blocks(data):
     blocks = []
-    for size in [2, 3]:
+    for size in BLOCK_SIZES:
         if len(data) >= size:
             segment = data[-size:]
             block = tuple([encode(row) for row in segment])
@@ -44,7 +43,7 @@ def make_forward_blocks(data):
 
 def make_reverse_blocks(data):
     blocks = []
-    for size in [2, 3]:
+    for size in BLOCK_SIZES:
         if len(data) >= size:
             segment = data[-size:]
             block = tuple([encode(row)[-2:] for row in segment])
@@ -89,13 +88,18 @@ def predict():
     front_blocks = make_forward_blocks(recent_data)
     for block, size in front_blocks:
         matches = find_matches(all_data, block, size, mode="forward")
+        print(f"[앞] 블럭 {block} → 매칭 수: {len(matches)}")
         front_predictions.extend(matches)
 
     back_predictions = []
     back_blocks = make_reverse_blocks(recent_data)
     for block, size in back_blocks:
         matches = find_matches(all_data, block, size, mode="reverse")
+        print(f"[뒤] 블럭 {block} → 매칭 수: {len(matches)}")
         back_predictions.extend(matches)
+
+    print("🔎 [앞] 전체 예측 후보 수:", len(front_predictions))
+    print("🔎 [뒤] 전체 예측 후보 수:", len(back_predictions))
 
     round_number = int(all_data[0]["date_round"]) + 1
 
