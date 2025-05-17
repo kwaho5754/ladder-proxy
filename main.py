@@ -1,38 +1,56 @@
-from flask import Flask, jsonify
-from collections import Counter
 import requests
+from collections import Counter
+from flask import Flask, jsonify
 
 app = Flask(__name__)
 
-@app.route("/predict")
-def predict():
+# 항상 288개 고정된 데이터 URL
+DATA_URL = "https://ntry.com/data/json/games/power_ladder/recent_result.json"
+
+
+def fetch_data():
     try:
-        # JSON 데이터 요청 (최근 288개 결과)
-        url = "https://ntry.com/data/json/games/power_ladder/recent_result.json"
-        res = requests.get(url)
-        data = res.json()
-
-        # 결과값만 추출
-        results = [item['result'] for item in data['rows'] if 'result' in item]
-
-        # 예측값 빈도 수 세기
-        count = Counter(results)
-        top_10 = [item[0] for item in count.most_common(10)]
-
-        response = {
-            "front_predictions": top_10[:5],
-            "back_predictions": top_10[5:],
-            "predict_round": len(results)
-        }
-        return jsonify(response)
-
+        response = requests.get(DATA_URL)
+        response.raise_for_status()
+        return response.json()  # 리스트 형태 반환
     except Exception as e:
-        print("[ERROR]", str(e))
-        return jsonify({
-            "front_predictions": [],
-            "back_predictions": [],
-            "predict_round": 0
-        })
+        print("[ERROR] Failed to fetch data:", e)
+        return []
+
+
+def analyze_prediction(data):
+    if not data or not isinstance(data, list):
+        return [], []
+
+    # 최근 288줄 분석
+    recent_data = data[:288]
+
+    pattern_counter = Counter()
+
+    for item in recent_data:
+        pattern = f"{item['start_point']}{item['line_count']}{item['odd_even']}"
+        pattern_counter[pattern] += 1
+
+    # 가장 많은 순으로 정렬된 예측값
+    all_predictions = [x[0] for x in pattern_counter.most_common(10)]
+
+    # 앞 기준 1~5, 뒤 기준 6~10으로 분리
+    front_predictions = all_predictions[:5]
+    back_predictions = all_predictions[5:10]
+
+    return front_predictions, back_predictions
+
+
+@app.route("/predict", methods=["GET"])
+def predict():
+    data = fetch_data()
+    front, back = analyze_prediction(data)
+    return jsonify({
+        "predict_round": len(data),  # 항상 288
+        "front_predictions": front,
+        "back_predictions": back
+    })
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
